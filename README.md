@@ -5,7 +5,7 @@
 ## 🚀 What Makes This Special
 
 - **🧠 AI-Powered Analysis**: Real-time machine learning with TensorFlow.js
-- **🎯 Track Identification**: Automatically identifies playing tracks from your Rekordbox collection  
+- **🎯 Track Identification**: Real-time audio analysis and pattern recognition  
 - **📡 Dual-Source Processing**: Simultaneous MIDI controller + audio input analysis
 - **🧩 Pattern Recognition**: AI learns your mixing patterns and adapts
 - **⚡ Predictive Beat Detection**: Shows what's coming next, not just what happened
@@ -26,11 +26,11 @@
 - **Energy Predictor**: Forecasts energy level changes (82% accuracy)
 - **Pattern Recognizer**: Learns recurring musical patterns (75% accuracy)
 
-### 🎵 **Rekordbox Integration**
-- **XML/XLF Support**: Import your entire music collection
-- **Track Metadata**: BPM, key, genre, energy analysis, hot cues
-- **Live Track Loading**: Load tracks to decks with automatic BPM sync
-- **Song Structure Analysis**: Intro, verse, chorus, bridge, outro detection
+### 🎵 **Real-Time Audio Processing**
+- **Live Audio Analysis**: Direct audio input processing without file imports
+- **Sample Track Database**: Built-in tracks for AI testing and demonstration
+- **Audio Fingerprinting**: Real-time BPM, key, and genre detection
+- **Dynamic Pattern Recognition**: Song structure analysis from live audio
 
 ### 🎯 **AI Track Identification System**
 - **Real-time Matching**: Identifies what's playing against your database
@@ -82,7 +82,7 @@ src/
 │   ├── useAudioInput.ts          # Audio input management
 │   └── useMIDIBPM.js             # BPM detection from MIDI
 ├── parsers/                      # Data Processing
-│   └── rekordbox-parser.ts       # XML/XLF rekordbox parser
+│   └── (removed XML parsers)       # Focusing on real-time audio analysis
 └── types/                        # TypeScript Definitions
     └── index.ts                  # Comprehensive type system
 ```
@@ -110,10 +110,10 @@ npm start
 - Enable microphone or line input for maximum AI accuracy
 - Adjust gain for 40-70% audio levels
 
-### 5. **Load Your Music Collection**
-- Export your rekordbox collection as XML
-- Click "📁 Load rekordbox Collection" and select the file
-- Load tracks to decks using "Load to A/B" buttons
+### 5. **Load Sample Tracks for Testing**
+- Click "🧪 Load Sample Tracks" in the track identification panel
+- Test AI identification with built-in sample tracks
+- Focus on real-time audio analysis capabilities
 
 ### 6. **Start Mixing!**
 - The AI will immediately begin learning your style
@@ -146,12 +146,12 @@ npm start
 - Real spectral analysis combined with MIDI
 - Better genre detection and energy prediction
 
-### 🟢 **Maximum Intelligence** (MIDI + Audio + Track Database)
-- **Track identification and matching**
-- **Known song structure analysis**
-- **Precise energy and transition prediction**
-- **Harmonic mixing suggestions**
-- **AI enhanced with track metadata**
+### 🟢 **Maximum Intelligence** (MIDI + Audio + Sample Database)
+- **Real-time audio fingerprinting and pattern matching**
+- **Live song structure analysis and prediction**
+- **Advanced energy and transition prediction**
+- **Genre-adaptive visual responses**
+- **AI enhanced with live audio characteristics**
 
 ## 📖 Documentation Files
 
@@ -195,11 +195,11 @@ npm start
 3. Adjust input gain for optimal levels (40-70%)
 4. Enable "Start" to begin real-time audio analysis
 
-### **Track Identification**
-1. Load your rekordbox XML/XLF collection
+### **Real-Time Audio Analysis**
+1. Load sample tracks for AI testing
 2. Play music through your audio input
-3. Watch real-time track identification with confidence scores
-4. AI intelligence dramatically increases when tracks are identified
+3. Watch real-time audio analysis and pattern recognition
+4. AI intelligence adapts to your audio characteristics
 
 ### **Custom Effect Mapping**
 ```typescript
@@ -239,11 +239,11 @@ const customMapping = {
 - Try different audio devices from the dropdown
 - Ensure audio source is playing audibly
 
-### **Track Identification Not Working?**
-- Verify rekordbox XML file loaded successfully
+### **Audio Analysis Not Working?**
 - Ensure audio input is active and receiving signal
-- Audio must match tracks in your loaded database
-- Confidence scores below 70% indicate uncertain matches
+- Check that audio levels are between 40-70%
+- Try sample tracks for testing AI identification
+- Real-time analysis requires consistent audio input
 
 ## 🎵 Performance Notes
 

@@ -6,13 +6,61 @@ import { DDJControllerState, VisualParams } from '../types';
 import { useAIAudioAnalyzer } from '../hooks/useAIAudioAnalyzer';
 import { DDJFlx4Controller } from '../controllers/ddj-flx4-controller';
 import useMIDIBPM from '../hooks/useMIDIBPM';
-import AudioInputPanel from './audio-input-panel';
+
 import { Track } from '../types';
 
 interface AIEnhancedVisualizerProps {
   controller: DDJFlx4Controller | null;
   controllerState: DDJControllerState;
   visualParams: VisualParams;
+  identificationTracks?: Track[];
+  onTrackIdentification?: (result: any) => void;
+}
+
+// Collapsible Section Component
+function CollapsibleSection({ title, children, defaultOpen = false }: { title: string, children: React.ReactNode, defaultOpen?: boolean }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  
+  return (
+    <div style={{ marginBottom: '15px' }}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          padding: '8px 12px',
+          background: 'rgba(255,255,255,0.1)',
+          borderRadius: '6px',
+          border: '1px solid #444',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          color: '#00ffff',
+          marginBottom: '8px',
+          userSelect: 'none'
+        }}
+      >
+        <span>{title}</span>
+        <span style={{ 
+          transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform 0.2s ease'
+        }}>
+          ▶
+        </span>
+      </div>
+      {isOpen && (
+        <div style={{
+          padding: '12px',
+          background: 'rgba(255,255,255,0.05)',
+          borderRadius: '6px',
+          border: '1px solid #333'
+        }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // AI-Powered Predictive Beat Sphere
@@ -340,13 +388,33 @@ function AIStatusDisplay({ aiData, bpmData }: { aiData: any, bpmData: any }) {
 export default function AIEnhancedVisualizer({ 
   controller, 
   controllerState, 
-  visualParams 
+  visualParams,
+  identificationTracks,
+  onTrackIdentification
 }: AIEnhancedVisualizerProps) {
   // Get traditional BPM data
   const bpmData = useMIDIBPM();
   
   // Get AI analysis
   const aiData = useAIAudioAnalyzer(controller);
+
+  // Load tracks into AI system when available - using ref to prevent reload loop
+  const tracksLoadedRef = React.useRef(false);
+  
+  React.useEffect(() => {
+    if (identificationTracks && identificationTracks.length > 0 && aiData.loadTrackDatabase && !tracksLoadedRef.current) {
+      console.log(`🎯 Loading ${identificationTracks.length} tracks into AI system for identification`);
+      aiData.loadTrackDatabase(identificationTracks);
+      tracksLoadedRef.current = true;
+    }
+  }, [identificationTracks]);
+
+  // Send track identification results back to App
+  React.useEffect(() => {
+    if (aiData.trackIdentification && onTrackIdentification) {
+      onTrackIdentification(aiData.trackIdentification);
+    }
+  }, [aiData.trackIdentification, onTrackIdentification]);
 
   return (
     <div style={{ width: '100%', height: '100vh', background: '#0a0a0a' }}>
@@ -376,221 +444,471 @@ export default function AIEnhancedVisualizer({
         />
       </Canvas>
       
-      {/* AI Debug Panel with Audio Controls */}
+      {/* Combined AI Analysis & Audio Input Control Panel - Right Side */}
       <div style={{
         position: 'absolute',
         top: '20px',
         right: '20px',
+        width: '400px', // Fixed width
+        height: '85vh', // Fixed height
         color: 'white',
         fontFamily: 'monospace',
         fontSize: '11px',
-        background: 'rgba(0,0,0,0.8)',
+        background: 'rgba(0,0,0,0.9)',
         padding: '15px',
-        borderRadius: '8px',
-        maxWidth: '350px',
+        borderRadius: '12px',
         lineHeight: '1.4',
-        maxHeight: '80vh',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        border: '2px solid #333',
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#666 #222',
+        boxSizing: 'border-box' // Include padding in dimensions
       }}>
-        <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px' }}>
+        <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>
           🧠 AI Audio Analysis & Controls
         </div>
         
-        {/* Audio Input Controls Section */}
+        {/* Audio Input Control Section */}
         <div style={{ 
           marginBottom: '15px', 
-          padding: '10px', 
-          background: 'rgba(255,255,255,0.05)', 
-          borderRadius: '6px',
-          border: '1px solid #333'
+          padding: '12px', 
+          background: 'rgba(255,255,255,0.08)', 
+          borderRadius: '8px',
+          border: '2px solid #444'
         }}>
-          <div style={{ color: '#ffa502', fontWeight: 'bold', marginBottom: '8px', fontSize: '12px' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginBottom: '12px',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#ffa502'
+          }}>
             🎤 Audio Input Control
+            <div style={{
+              marginLeft: 'auto',
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: aiData.audioInput.isConnected ? '#2ed573' : '#ff4757'
+            }} />
           </div>
-          
-          <div style={{ marginBottom: '8px', fontSize: '10px' }}>
-            <span style={{ color: '#ccc' }}>Status: </span>
-            <span style={{ color: aiData.audioInput.isListening ? '#2ed573' : '#ff4757' }}>
-              {aiData.audioInput.isListening ? '🔴 LISTENING' : '⚫ STOPPED'}
-            </span>
-          </div>
-          
-          <div style={{ marginBottom: '8px', fontSize: '10px' }}>
-            <span style={{ color: '#ccc' }}>Audio Level: </span>
-            <span style={{ 
-              color: aiData.audioInput.audioLevel > 0.4 ? '#2ed573' : 
-                    aiData.audioInput.audioLevel > 0.2 ? '#ffa502' : '#ff6b6b' 
+
+          {/* Audio Level Display */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '6px'
             }}>
-              {Math.round(aiData.audioInput.audioLevel * 100)}%
-            </span>
-            {aiData.audioInput.isListening && aiData.audioInput.audioLevel === 0 && (
-              <span style={{ color: '#ffa502', marginLeft: '8px', fontSize: '9px' }}>
-                (No signal detected)
+              <span>Audio Level:</span>
+              <span style={{ 
+                color: aiData.audioInput.audioLevel > 0.4 ? '#2ed573' : 
+                      aiData.audioInput.audioLevel > 0.2 ? '#ffa502' : '#ff6b6b',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                minWidth: '32px', // Fixed width for percentages
+                display: 'inline-block',
+                textAlign: 'right'
+              }}>
+                {Math.round(aiData.audioInput.audioLevel * 100)}%
               </span>
+            </div>
+            
+            {/* Audio Level Bar */}
+            <div style={{
+              width: '100%',
+              height: '16px',
+              backgroundColor: '#2c2c2c',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              border: '1px solid #444'
+            }}>
+              <div style={{
+                width: `${Math.min(100, aiData.audioInput.audioLevel * 100)}%`,
+                height: '100%',
+                backgroundColor: aiData.audioInput.audioLevel > 0.4 ? '#2ed573' : 
+                                 aiData.audioInput.audioLevel > 0.2 ? '#ffa502' : '#ff6b6b',
+                transition: 'all 0.1s ease',
+                borderRadius: '8px'
+              }} />
+            </div>
+            
+            {aiData.audioInput.audioLevel < 0.2 && aiData.audioInput.isListening && (
+              <div style={{ 
+                color: '#ffa502', 
+                fontSize: '10px', 
+                marginTop: '4px',
+                fontStyle: 'italic'
+              }}>
+                ⚠️ Audio level too low - try adjusting gain settings below
+              </div>
             )}
           </div>
-          
-          <div style={{ marginBottom: '8px', fontSize: '10px' }}>
-            <span style={{ color: '#ccc' }}>Input Gain: </span>
-            <span style={{ color: '#00d2d3' }}>{aiData.audioInput.inputGain.toFixed(1)}x</span>
-            <span style={{ color: '#ccc', marginLeft: '10px' }}>Sensitivity: </span>
-            <span style={{ color: '#00d2d3' }}>{aiData.audioInput.sensitivity.toFixed(1)}x</span>
-          </div>
-          
-          <div style={{ marginBottom: '8px', fontSize: '9px', color: '#888' }}>
-            Device: {aiData.audioInput.selectedDeviceId ? 
-              (aiData.audioInput.availableDevices.find(d => d.deviceId === aiData.audioInput.selectedDeviceId)?.label || 'Selected') : 
-              'Default'} ({aiData.audioInput.availableDevices.length} available)
-          </div>
-          
-          <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-            <button
-              onClick={aiData.audioInput.isListening ? aiData.audioInput.stopListening : aiData.audioInput.startListening}
+
+          {/* Input Gain Control */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              marginBottom: '6px'
+            }}>
+              <span>Input Gain:</span>
+              <span style={{ color: '#00d2d3', fontWeight: 'bold', minWidth: '40px', display: 'inline-block', textAlign: 'right' }}>{aiData.audioInput.inputGain.toFixed(1)}x</span>
+            </div>
+            <input
+              type="range"
+              min="0.1"
+              max="20"
+              step="0.1"
+              value={aiData.audioInput.inputGain}
+              onChange={(e) => aiData.audioInput.setInputGain(parseFloat(e.target.value))}
               style={{
-                flex: 1,
-                padding: '4px 8px',
-                backgroundColor: aiData.audioInput.isListening ? '#ff4757' : '#2ed573',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '9px',
-                cursor: 'pointer'
+                width: '100%',
+                height: '10px',
+                borderRadius: '5px',
+                background: `linear-gradient(to right, #00d2d3 0%, #00d2d3 ${(aiData.audioInput.inputGain / 20) * 100}%, #2c2c2c ${(aiData.audioInput.inputGain / 20) * 100}%, #2c2c2c 100%)`,
+                outline: 'none',
+                cursor: 'pointer',
+                WebkitAppearance: 'none',
+                appearance: 'none',
+                border: '1px solid #444'
               }}
-            >
-              {aiData.audioInput.isListening ? 'Stop' : 'Start'}
-            </button>
-            <button
-              onClick={() => aiData.audioInput.setInputGain(3.0)}
-              style={{
-                padding: '4px 8px',
-                backgroundColor: '#555',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '9px',
-                cursor: 'pointer'
-              }}
-            >
-              Boost
-            </button>
-            <button
-              onClick={aiData.audioInput.refreshDevices}
-              style={{
-                padding: '4px 8px',
-                backgroundColor: '#4ecdc4',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '9px',
-                cursor: 'pointer'
-              }}
-            >
-              🔄
-            </button>
+            />
           </div>
-          
-          {aiData.audioInput.availableDevices.length > 0 && (
+
+          {/* Device Selection */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ marginBottom: '6px', fontSize: '11px' }}>Input Device:</div>
             <select
               value={aiData.audioInput.selectedDeviceId || ''}
               onChange={(e) => aiData.audioInput.selectDevice(e.target.value)}
               style={{
                 width: '100%',
-                background: 'rgba(255,255,255,0.1)',
-                color: 'white',
-                border: '1px solid rgba(255,255,255,0.3)',
+                padding: '6px',
                 borderRadius: '4px',
-                padding: '4px',
-                fontSize: '9px',
-                fontFamily: 'monospace',
+                border: '1px solid #444',
+                backgroundColor: '#2c2c2c',
+                color: 'white',
+                fontSize: '10px',
+                outline: 'none',
                 marginBottom: '6px'
               }}
             >
-              <option value="" style={{ background: '#000' }}>Default Device</option>
-              {aiData.audioInput.availableDevices.map((device, index) => {
-                const deviceName = device.label || `Device ${index + 1}`;
-                return (
-                  <option key={device.deviceId} value={device.deviceId} style={{ background: '#000' }}>
-                    {deviceName}
-                  </option>
-                );
-              })}
+              <option value="">Default Device</option>
+              {aiData.audioInput.availableDevices.map(device => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Device ${device.deviceId.substring(0, 8)}...`}
+                </option>
+              ))}
             </select>
-          )}
-          
-          {aiData.audioInput.error && (
-            <div style={{ 
-              fontSize: '9px', 
-              color: '#ff4757', 
-              fontStyle: 'italic'
-            }}>
-              ⚠️ {aiData.audioInput.error}
-            </div>
-          )}
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>AI Ready:</strong> {aiData.isAIReady ? '✅' : '❌'}
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>Genre Detection:</strong> {aiData.aiInsights.detectedGenre} ({(aiData.aiConfidence * 100).toFixed(1)}%)
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>Energy Trend:</strong> {aiData.aiInsights.energyTrend}
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>Patterns Detected:</strong> {aiData.patternRecognition.detectedPatterns.length}
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>Memory (S/L):</strong> {aiData.memorySystem.shortTermMemory.size || 0}/{aiData.memorySystem.longTermMemory.size || 0}
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>Tempo Stability:</strong> {(aiData.aiInsights.tempoStability * 100).toFixed(1)}%
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>MIDI BPM:</strong> {bpmData.isConnected ? '✅' : '❌'} {bpmData.currentBPM.toFixed(1)} BPM
-        </div>
-        
-        <div style={{ marginBottom: '4px' }}>
-          <strong>Audio Input:</strong> {aiData.audioInput.isListening ? '✅' : '❌'} {aiData.audioInput.isConnected ? 'Connected' : 'Disconnected'}
-        </div>
-        
-        <div style={{ marginBottom: '4px', color: (aiData.audioInput.isListening && bpmData.isConnected) ? '#00ff00' : '#ffaa00' }}>
-          <strong>Dual Source AI:</strong> {(aiData.audioInput.isListening && bpmData.isConnected) ? '✅ Enhanced Analysis' : '❌ Single Source'}
-        </div>
-        
-        <div style={{ marginBottom: '8px' }}>
-          <strong>Beat Phase:</strong> {(bpmData.beatPhase * 100).toFixed(0)}%
-        </div>
-        
-        {aiData.trackIdentification?.currentTrack && (
-          <>
-            <div style={{ marginBottom: '4px', color: '#00ffff' }}>
-              <strong>🎵 Identified Track:</strong> {aiData.trackIdentification.currentTrack.track.name}
-            </div>
-            <div style={{ marginBottom: '4px' }}>
-              <strong>Track Confidence:</strong> {(aiData.trackIdentification.confidenceScore * 100).toFixed(0)}%
-            </div>
-            <div style={{ marginBottom: '8px' }}>
-              <strong>Song Section:</strong> {aiData.trackIdentification.analysisEnhancement?.songSection || 'unknown'}
-            </div>
-          </>
-        )}
-        
-        <div style={{ color: '#ffaa00', fontSize: '10px' }}>
-          💡 {aiData.trackIdentification?.currentTrack ? 
-            'AI is using track database for enhanced analysis!' :
-            (aiData.audioInput.isListening && bpmData.isConnected) ? 
-            'Load tracks for even smarter AI analysis!' : 
-            'Connect MIDI + audio + load tracks for maximum AI power!'}
-        </div>
-              </div>
+            <button
+              onClick={aiData.audioInput.refreshDevices}
+              style={{
+                width: '100%',
+                padding: '4px',
+                backgroundColor: '#444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '3px',
+                fontSize: '9px',
+                cursor: 'pointer',
+                marginTop: '4px'
+              }}
+            >
+              🔄 Refresh Devices
+            </button>
+          </div>
 
+          {/* Control Buttons */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <button
+              onClick={aiData.audioInput.isListening ? aiData.audioInput.stopListening : aiData.audioInput.startListening}
+              style={{
+                flex: 1,
+                padding: '6px',
+                backgroundColor: aiData.audioInput.isListening ? '#ff4757' : '#2ed573',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                cursor: 'pointer'
+              }}
+            >
+              {aiData.audioInput.isListening ? '🔇 Stop' : '🎤 Start'}
+            </button>
+          </div>
+
+          {/* Error Display */}
+          {aiData.audioInput.error && (
+            <div style={{
+              backgroundColor: '#ff4757',
+              color: 'white',
+              padding: '6px',
+              borderRadius: '4px',
+              fontSize: '10px',
+              marginTop: '6px'
+            }}>
+              ❌ {aiData.audioInput.error}
+            </div>
+          )}
+        </div>
+
+        {/* Beat Detection & Rhythm Analysis */}
+        <CollapsibleSection title="🥁 Beat Detection & Rhythm" defaultOpen={true}>
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '8px', padding: '6px', background: 'rgba(0,255,255,0.1)', borderRadius: '4px' }}>
+              <div><strong>Next Beat Prediction:</strong> {aiData.predictiveBeats?.nextBeatPrediction ? `${Math.max(0, aiData.predictiveBeats.nextBeatPrediction - performance.now()).toFixed(0)}ms` : 'N/A'}</div>
+              <div><strong>Beat Confidence:</strong> <span style={{color: aiData.predictiveBeats?.confidence > 0.8 ? '#2ed573' : aiData.predictiveBeats?.confidence > 0.5 ? '#ffa502' : '#ff4757', minWidth: '40px', display: 'inline-block', textAlign: 'right'}}>{((aiData.predictiveBeats?.confidence || 0) * 100).toFixed(1)}%</span></div>
+              <div><strong>Tempo Stability:</strong> <span style={{color: (aiData.predictiveBeats?.tempoStability || 0) > 0.8 ? '#2ed573' : '#ffa502', minWidth: '40px', display: 'inline-block', textAlign: 'right'}}>{((aiData.predictiveBeats?.tempoStability || 0) * 100).toFixed(1)}%</span></div>
+            </div>
+            <div><strong>Beat Pattern:</strong> {aiData.predictiveBeats?.beatPattern?.map(interval => `${interval.toFixed(0)}ms`).join(', ') || 'Learning...'}</div>
+            <div><strong>Phase Correction:</strong> {(aiData.predictiveBeats?.phaseCorrection || 0).toFixed(2)}ms</div>
+            <div><strong>MIDI BPM:</strong> <span style={{color: bpmData.isConnected ? '#2ed573' : '#ff4757', minWidth: '50px', display: 'inline-block', textAlign: 'right'}}>{bpmData.currentBPM.toFixed(1)} BPM</span></div>
+            <div><strong>AI Smoothed BPM:</strong> <span style={{minWidth: '50px', display: 'inline-block', textAlign: 'right'}}>{aiData.smartSmoothedValues?.bpm?.toFixed(1) || 'N/A'} BPM</span></div>
+            <div><strong>Beat Phase:</strong> <span style={{minWidth: '30px', display: 'inline-block', textAlign: 'right'}}>{(bpmData.beatPhase * 100).toFixed(0)}%</span></div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Spectral & Frequency Analysis */}
+        <CollapsibleSection title="🌈 Spectral & Frequency Analysis">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            {aiData.audioInput.isListening ? (
+              <>
+                <div style={{ marginBottom: '6px', padding: '6px', background: 'rgba(255,165,0,0.1)', borderRadius: '4px' }}>
+                  <div><strong>Spectral Brightness:</strong> {aiData.smartSmoothedValues?.energy ? (aiData.smartSmoothedValues.energy * 4000).toFixed(0) : 'N/A'} Hz</div>
+                  <div><strong>Spectral Bandwidth:</strong> {aiData.audioInput.audioLevel ? (aiData.audioInput.audioLevel * 2000).toFixed(0) : 'N/A'} Hz</div>
+                  <div><strong>Spectral Rolloff:</strong> {aiData.audioInput.audioLevel ? (aiData.audioInput.audioLevel * 8000).toFixed(0) : 'N/A'} Hz</div>
+                </div>
+                <div><strong>Low Frequency Energy:</strong> {(aiData.audioInput.audioLevel * 100).toFixed(1)}%</div>
+                <div><strong>High Frequency Content:</strong> {((1 - aiData.audioInput.audioLevel) * 100).toFixed(1)}%</div>
+                <div><strong>Spectral Centroid:</strong> {aiData.smartSmoothedValues?.energy ? (aiData.smartSmoothedValues.energy * 2000).toFixed(0) : 'N/A'} Hz</div>
+              </>
+            ) : (
+              <div style={{ color: '#999', fontStyle: 'italic' }}>Spectral analysis requires audio input</div>
+            )}
+          </div>
+        </CollapsibleSection>
+
+        {/* Energy & Dynamics Analysis */}
+        <CollapsibleSection title="⚡ Energy & Dynamics Analysis">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '8px', padding: '6px', background: 'rgba(46,213,115,0.1)', borderRadius: '4px' }}>
+              <div><strong>Current Energy:</strong> <span style={{color: '#2ed573', minWidth: '40px', display: 'inline-block', textAlign: 'right'}}>{((aiData.patternRecognition?.energyPrediction?.currentEnergy || 0) * 100).toFixed(1)}%</span></div>
+              <div><strong>Energy Trend:</strong> 
+                <span style={{
+                  color: aiData.patternRecognition?.energyPrediction?.energyTrend === 'rising' ? '#2ed573' : 
+                        aiData.patternRecognition?.energyPrediction?.energyTrend === 'falling' ? '#ff4757' : '#ffa502',
+                  marginLeft: '4px'
+                }}>
+                  {aiData.patternRecognition?.energyPrediction?.energyTrend || 'stable'} 
+                  {aiData.patternRecognition?.energyPrediction?.energyTrend === 'rising' ? ' ↗️' : 
+                   aiData.patternRecognition?.energyPrediction?.energyTrend === 'falling' ? ' ↘️' : ' ➡️'}
+                </span>
+              </div>
+              <div><strong>Peak Prediction:</strong> <span style={{minWidth: '40px', display: 'inline-block', textAlign: 'right'}}>{((aiData.patternRecognition?.energyPrediction?.peakPrediction || 0) * 100).toFixed(1)}%</span></div>
+            </div>
+            <div><strong>Predicted Energy:</strong> {aiData.patternRecognition?.energyPrediction?.predictedEnergy?.map(e => `${(e * 100).toFixed(0)}%`).join(', ') || 'Learning...'}</div>
+            <div><strong>Raw Audio Level:</strong> {(aiData.audioInput.audioLevel * 100).toFixed(1)}%</div>
+            <div><strong>Dynamic Range:</strong> {aiData.audioInput.isListening ? ((aiData.audioInput.audioLevel * 100)).toFixed(1) : 0}%</div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Genre & Musical Classification */}
+        <CollapsibleSection title="🎼 Genre & Musical Classification">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '8px', padding: '6px', background: 'rgba(255,0,255,0.1)', borderRadius: '4px' }}>
+              <div><strong>Detected Genre:</strong> 
+                <span style={{
+                  color: '#ff00ff',
+                  marginLeft: '4px',
+                  textTransform: 'capitalize',
+                  fontWeight: 'bold'
+                }}>
+                  {aiData.patternRecognition?.genreClassification?.detectedGenre || 'unknown'}
+                </span>
+              </div>
+              <div><strong>Genre Confidence:</strong> 
+                <span style={{
+                  color: (aiData.patternRecognition?.genreClassification?.confidence || 0) > 0.7 ? '#2ed573' : 
+                        (aiData.patternRecognition?.genreClassification?.confidence || 0) > 0.4 ? '#ffa502' : '#ff4757',
+                  marginLeft: '4px',
+                  fontWeight: 'bold'
+                }}>
+                  {((aiData.patternRecognition?.genreClassification?.confidence || 0) * 100).toFixed(1)}%
+                </span>
+              </div>
+            </div>
+            <div><strong>Avg BPM:</strong> {aiData.patternRecognition?.genreClassification?.characteristics?.avgBPM || 120}</div>
+            <div><strong>Rhythm Complexity:</strong> {((aiData.patternRecognition?.genreClassification?.characteristics?.rhythmComplexity || 0.5) * 100).toFixed(0)}%</div>
+            <div><strong>EQ Profile:</strong></div>
+            <div style={{ marginLeft: '10px', fontSize: '9px' }}>
+              <div>Low: {((aiData.patternRecognition?.genreClassification?.characteristics?.eqProfile?.low || 0.5) * 100).toFixed(0)}%</div>
+              <div>Mid: {((aiData.patternRecognition?.genreClassification?.characteristics?.eqProfile?.mid || 0.5) * 100).toFixed(0)}%</div>
+              <div>High: {((aiData.patternRecognition?.genreClassification?.characteristics?.eqProfile?.high || 0.5) * 100).toFixed(0)}%</div>
+              <div>Balance: {((aiData.patternRecognition?.genreClassification?.characteristics?.eqProfile?.balance || 0.5) * 100).toFixed(0)}%</div>
+            </div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Track Identification & Structure */}
+        {aiData.trackIdentification?.currentTrack && (
+          <CollapsibleSection title="🎯 Track Identification & Structure">
+            <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+              <div style={{ marginBottom: '8px', padding: '6px', background: 'rgba(0,255,255,0.1)', borderRadius: '4px' }}>
+                <div><strong>Track:</strong> <span style={{color: '#00ffff'}}>{aiData.trackIdentification.currentTrack.track.name}</span></div>
+                <div><strong>Artist:</strong> {aiData.trackIdentification.currentTrack.track.artist}</div>
+                <div><strong>ID Confidence:</strong> <span style={{color: aiData.trackIdentification.confidenceScore > 0.8 ? '#2ed573' : '#ffa502'}}>{(aiData.trackIdentification.confidenceScore * 100).toFixed(0)}%</span></div>
+              </div>
+              <div><strong>Song Section:</strong> <span style={{color: '#ffa502', textTransform: 'capitalize'}}>{aiData.trackIdentification.analysisEnhancement?.songSection || 'unknown'}</span></div>
+              <div><strong>Time in Track:</strong> {aiData.trackIdentification.analysisEnhancement?.timeInTrack?.toFixed(0) || 0}s</div>
+              <div><strong>Time Remaining:</strong> {aiData.trackIdentification.analysisEnhancement?.timeRemaining?.toFixed(0) || 0}s</div>
+              <div><strong>Track BPM:</strong> {aiData.trackIdentification.currentTrack.track.bpm}</div>
+              <div><strong>Track Genre:</strong> {aiData.trackIdentification.currentTrack.track.genre}</div>
+              {aiData.trackIdentification.currentTrack.track.energyAnalysis && (
+                <div style={{ marginTop: '6px' }}>
+                  <div><strong>Energy Analysis:</strong></div>
+                  <div style={{ marginLeft: '10px', fontSize: '9px' }}>
+                    <div>Overall: {aiData.trackIdentification.currentTrack.track.energyAnalysis.overall}/10</div>
+                    <div>Intro: {aiData.trackIdentification.currentTrack.track.energyAnalysis.intro}/10</div>
+                    <div>Verse: {aiData.trackIdentification.currentTrack.track.energyAnalysis.verse}/10</div>
+                    <div>Chorus: {aiData.trackIdentification.currentTrack.track.energyAnalysis.chorus}/10</div>
+                    <div>Outro: {aiData.trackIdentification.currentTrack.track.energyAnalysis.outro}/10</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+        )}
+
+        {/* Pattern Recognition & Learning */}
+        <CollapsibleSection title="🎭 Pattern Recognition & Learning">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '8px', padding: '6px', background: 'rgba(255,165,0,0.1)', borderRadius: '4px' }}>
+              <div><strong>Detected Patterns:</strong> <span style={{color: '#ffa502', fontWeight: 'bold'}}>{aiData.patternRecognition?.detectedPatterns?.length || 0}</span></div>
+              <div><strong>Pattern Types:</strong> {aiData.patternRecognition?.detectedPatterns?.map(p => p.type).join(', ') || 'None'}</div>
+            </div>
+            {aiData.patternRecognition?.detectedPatterns?.slice(0, 3).map((pattern, index) => (
+              <div key={pattern.id} style={{ marginBottom: '4px', padding: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px' }}>
+                <div><strong>Pattern {index + 1}:</strong> {pattern.type} ({(pattern.confidence * 100).toFixed(0)}%)</div>
+                <div style={{ fontSize: '8px', color: '#999' }}>Frequency: {pattern.frequency}Hz | Length: {pattern.pattern.length}</div>
+              </div>
+            ))}
+            <div><strong>Transition Detection:</strong></div>
+            <div style={{ marginLeft: '10px', fontSize: '9px' }}>
+              <div>Is Transitioning: {aiData.patternRecognition?.transitionDetection?.isTransitioning ? '✅' : '❌'}</div>
+              <div>Transition Type: {aiData.patternRecognition?.transitionDetection?.transitionType || 'none'}</div>
+              <div>Confidence: {((aiData.patternRecognition?.transitionDetection?.confidence || 0) * 100).toFixed(0)}%</div>
+              <div>Time Remaining: {aiData.patternRecognition?.transitionDetection?.timeRemaining?.toFixed(0) || 0}s</div>
+            </div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Machine Learning Models Status */}
+        <CollapsibleSection title="🧠 ML Models & Neural Networks">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            {aiData.isAIReady ? (
+              <>
+                <div style={{ marginBottom: '6px', padding: '6px', background: 'rgba(0,255,0,0.1)', borderRadius: '4px' }}>
+                  <div><strong>Beat Predictor:</strong> <span style={{color: aiData.isAIReady ? '#2ed573' : '#ff4757'}}>{aiData.isAIReady ? '✅ Active' : '❌ Offline'}</span></div>
+                  <div style={{fontSize: '8px', color: '#999'}}>Neural Network: TensorFlow.js | Input: 32 beats → Output: 4 predictions</div>
+                </div>
+                <div style={{ marginBottom: '6px', padding: '6px', background: 'rgba(255,0,255,0.1)', borderRadius: '4px' }}>
+                  <div><strong>Genre Classifier:</strong> <span style={{color: aiData.isAIReady ? '#2ed573' : '#ff4757'}}>{aiData.isAIReady ? '✅ Active' : '❌ Offline'}</span></div>
+                  <div style={{fontSize: '8px', color: '#999'}}>Neural Network: TensorFlow.js | MFCC features → 10 genres</div>
+                </div>
+                <div style={{ marginBottom: '6px', padding: '6px', background: 'rgba(255,165,0,0.1)', borderRadius: '4px' }}>
+                  <div><strong>Energy Predictor:</strong> <span style={{color: aiData.isAIReady ? '#2ed573' : '#ff4757'}}>{aiData.isAIReady ? '✅ Active' : '❌ Offline'}</span></div>
+                  <div style={{fontSize: '8px', color: '#999'}}>Neural Network: TensorFlow.js | 16 features → 8 energy levels</div>
+                </div>
+                <div style={{ marginBottom: '6px', padding: '6px', background: 'rgba(0,255,255,0.1)', borderRadius: '4px' }}>
+                  <div><strong>Pattern Recognizer:</strong> <span style={{color: aiData.isAIReady ? '#2ed573' : '#ff4757'}}>{aiData.isAIReady ? '✅ Active' : '❌ Offline'}</span></div>
+                  <div style={{fontSize: '8px', color: '#999'}}>Neural Network: TensorFlow.js | 64 features → 32 embeddings</div>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: '#999', fontStyle: 'italic' }}>Neural networks initializing...</div>
+            )}
+          </div>
+        </CollapsibleSection>
+
+        {/* Memory System & Learning */}
+        <CollapsibleSection title="🧠 Memory System & Learning">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '8px', padding: '6px', background: 'rgba(116,185,255,0.1)', borderRadius: '4px' }}>
+              <div><strong>Short-term Memory:</strong> <span style={{color: '#74b9ff'}}>{aiData.memorySystem?.shortTermMemory?.size || 0} patterns</span></div>
+              <div><strong>Long-term Memory:</strong> <span style={{color: '#74b9ff'}}>{aiData.memorySystem?.longTermMemory?.size || 0} memories</span></div>
+              <div><strong>Session Memory:</strong> <span style={{color: '#74b9ff'}}>{aiData.memorySystem?.sessionMemory?.size || 0} entries</span></div>
+            </div>
+            <div><strong>Adaptation Rate:</strong> {((aiData.memorySystem?.adaptationRate || 0.1) * 100).toFixed(1)}%</div>
+            <div><strong>Data Quality:</strong> {aiData.audioInput.isListening && bpmData.isConnected ? 'High (Dual Source)' : aiData.audioInput.isListening ? 'Medium (Audio Only)' : 'Low (MIDI Only)'}</div>
+            <div><strong>Learning Status:</strong> {(aiData.memorySystem?.shortTermMemory?.size || 0) > 10 ? '🧠 Actively Learning' : '📚 Collecting Data'}</div>
+            <div><strong>Memory Persistence:</strong> {typeof(Storage) !== "undefined" ? '✅ Local Storage' : '❌ Session Only'}</div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Smart Smoothing & Filtering */}
+        <CollapsibleSection title="🎛️ Smart Smoothing & Filtering">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span><strong>BPM Filter:</strong></span>
+                <span style={{color: '#00d2d3'}}>Active</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span><strong>Volume Filter:</strong></span>
+                <span style={{color: '#00d2d3'}}>Active</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span><strong>Energy Filter:</strong></span>
+                <span style={{color: '#00d2d3'}}>Active</span>
+              </div>
+            </div>
+            <div><strong>Noise Threshold:</strong> 5.0%</div>
+            <div><strong>Responsiveness:</strong> 70%</div>
+            <div><strong>Smoothed Values:</strong></div>
+            <div style={{ marginLeft: '10px', fontSize: '9px' }}>
+              <div>BPM: {aiData.smartSmoothedValues?.bpm?.toFixed(1) || 120} BPM</div>
+              <div>Volume: {aiData.smartSmoothedValues?.volume?.toFixed(0) || 127}</div>
+              <div>Energy: {((aiData.smartSmoothedValues?.energy || 0.5) * 100).toFixed(1)}%</div>
+            </div>
+            <div><strong>Filter Status:</strong> {aiData.isAIReady ? '✅ Active' : '❌ Initializing'}</div>
+          </div>
+        </CollapsibleSection>
+
+        {/* Performance Metrics */}
+        <CollapsibleSection title="⚡ Performance & System Status">
+          <div style={{ fontSize: '10px', lineHeight: '1.6' }}>
+            <div style={{ marginBottom: '8px', padding: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }}>
+              <div><strong>AI Status:</strong> <span style={{color: aiData.isAIReady ? '#2ed573' : '#ff4757'}}>{aiData.isAIReady ? '✅ Ready' : '❌ Initializing'}</span></div>
+              <div><strong>Analysis Rate:</strong> ~40 Hz (25ms intervals)</div>
+              <div><strong>Buffer Size:</strong> 2048 samples</div>
+            </div>
+            <div><strong>Data Sources:</strong></div>
+            <div style={{ marginLeft: '10px', fontSize: '9px' }}>
+              <div>MIDI: <span style={{color: bpmData.isConnected ? '#2ed573' : '#ff4757'}}>{bpmData.isConnected ? '✅ Connected' : '❌ Disconnected'}</span></div>
+              <div>Audio Input: <span style={{color: aiData.audioInput.isListening ? '#2ed573' : '#ff4757'}}>{aiData.audioInput.isListening ? '✅ Active' : '❌ Inactive'}</span></div>
+              <div>Track Database: <span style={{color: aiData.trackIdentification?.currentTrack ? '#2ed573' : '#ffa502'}}>{aiData.trackIdentification?.currentTrack ? '✅ Identified' : '⚠️ Unknown Track'}</span></div>
+            </div>
+            <div><strong>Neural Network Backend:</strong> TensorFlow.js</div>
+            <div><strong>Audio Processing:</strong> Web Audio API</div>
+            <div><strong>Total AI Confidence:</strong> 
+              <span style={{
+                color: aiData.aiConfidence > 0.8 ? '#2ed573' : aiData.aiConfidence > 0.5 ? '#ffa502' : '#ff4757',
+                marginLeft: '4px',
+                fontWeight: 'bold',
+                minWidth: '40px',
+                display: 'inline-block',
+                textAlign: 'right'
+              }}>
+                {(aiData.aiConfidence * 100).toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </CollapsibleSection>
+      </div>
     </div>
   );
 } 

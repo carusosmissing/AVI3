@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { RekordboxParser } from '../parsers/rekordbox-parser';
 import { Track } from '../types';
+import { RekordboxParser, readFileAsText } from '../parsers/rekordbox-parser';
 
 interface TrackIdentificationPanelProps {
   onTracksLoaded: (tracks: Track[]) => void;
@@ -15,35 +15,8 @@ export default function TrackIdentificationPanel({
 }: TrackIdentificationPanelProps) {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [parseStatus, setParseStatus] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      console.log('📁 Loading Rekordbox collection file...');
-      
-      const text = await file.text();
-      const parser = new RekordboxParser();
-      const parsedTracks = await parser.parseCollection(text);
-      
-      setTracks(parsedTracks);
-      onTracksLoaded(parsedTracks);
-      
-      console.log(`✅ Successfully loaded ${parsedTracks.length} tracks for AI identification`);
-      
-    } catch (err) {
-      console.error('❌ Failed to load tracks:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load track collection');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleLoadSampleTracks = () => {
     // Create some sample tracks for testing
@@ -98,7 +71,50 @@ export default function TrackIdentificationPanel({
 
     setTracks(sampleTracks);
     onTracksLoaded(sampleTracks);
+    setParseStatus('✅ Sample tracks loaded');
     console.log('🎵 Loaded sample tracks for testing');
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.xml')) {
+      setParseStatus('❌ Please select an XML file');
+      return;
+    }
+
+    setIsLoading(true);
+    setParseStatus('🔄 Parsing Rekordbox XML...');
+
+    try {
+      console.log('📁 Loading XML file:', file.name);
+      const xmlContent = await readFileAsText(file);
+      
+      console.log('🔍 Parsing XML content...');
+      const parsedTracks = await RekordboxParser.parseXML(xmlContent);
+      
+      if (parsedTracks.length === 0) {
+        setParseStatus('⚠️ No valid tracks found in XML');
+        return;
+      }
+
+      setTracks(parsedTracks);
+      onTracksLoaded(parsedTracks);
+      setParseStatus(`✅ Loaded ${parsedTracks.length} tracks from ${file.name}`);
+      
+      console.log(`🎵 Successfully loaded ${parsedTracks.length} tracks from Rekordbox XML`);
+      
+    } catch (error) {
+      console.error('❌ Error parsing XML:', error);
+      setParseStatus(`❌ Error parsing XML: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const currentTrack = identificationResult?.currentTrack?.track;
@@ -138,14 +154,23 @@ export default function TrackIdentificationPanel({
           Track Database: {tracks.length} tracks loaded
         </div>
         
+        {/* File Upload Row */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xml"
+            onChange={handleFileUpload}
+            style={{ display: 'none' }}
+          />
+          
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleUploadClick}
             disabled={isLoading}
             style={{
               flex: 1,
               padding: '8px 12px',
-              backgroundColor: isLoading ? '#666' : '#007acc',
+              backgroundColor: isLoading ? '#6c757d' : '#007bff',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
@@ -153,43 +178,57 @@ export default function TrackIdentificationPanel({
               cursor: isLoading ? 'not-allowed' : 'pointer'
             }}
           >
-            {isLoading ? 'Loading...' : '📁 Load XLF/XML'}
+            {isLoading ? '🔄 Parsing...' : '📁 Upload Rekordbox XML'}
           </button>
           
           <button
             onClick={handleLoadSampleTracks}
+            disabled={isLoading}
             style={{
               padding: '8px 12px',
-              backgroundColor: '#28a745',
+              backgroundColor: isLoading ? '#6c757d' : '#28a745',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
               fontSize: '12px',
-              cursor: 'pointer'
+              cursor: isLoading ? 'not-allowed' : 'pointer'
             }}
           >
-            🧪 Sample Tracks
+            🧪 Sample
+          </button>
+          
+          <button
+            onClick={() => {
+              setTracks([]);
+              onTracksLoaded([]);
+              setParseStatus('');
+            }}
+            disabled={isLoading}
+            style={{
+              padding: '8px 12px',
+              backgroundColor: isLoading ? '#6c757d' : '#ff4757',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '12px',
+              cursor: isLoading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            🗑️
           </button>
         </div>
-        
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xml,.xlf"
-          onChange={handleFileUpload}
-          style={{ display: 'none' }}
-        />
-        
-        {error && (
+
+        {/* Parse Status */}
+        {parseStatus && (
           <div style={{
-            backgroundColor: '#ff4757',
-            color: 'white',
-            padding: '6px',
-            borderRadius: '4px',
             fontSize: '11px',
-            marginTop: '5px'
+            color: parseStatus.includes('❌') ? '#ff6b6b' : 
+                   parseStatus.includes('⚠️') ? '#ffa502' : 
+                   parseStatus.includes('✅') ? '#2ed573' : '#74b9ff',
+            marginBottom: '8px',
+            fontWeight: '500'
           }}>
-            ❌ {error}
+            {parseStatus}
           </div>
         )}
       </div>
@@ -288,10 +327,11 @@ export default function TrackIdentificationPanel({
         lineHeight: '1.3'
       }}>
         💡 <strong>Instructions:</strong><br/>
-        • Upload your Rekordbox XML/XLF collection file<br/>
-        • Or try sample tracks for testing<br/>
-        • Play music and watch AI identify tracks in real-time<br/>
-        • AI uses audio analysis + track database for enhanced insights
+        • Upload your Rekordbox XML export for AI track identification<br/>
+        • Export XML from Rekordbox: File → Export Collection in XML format<br/>
+        • Or load sample tracks for testing AI identification features<br/>
+        • Play music and watch AI identify tracks from your collection<br/>
+        • AI analyzes live audio and matches against your track database
       </div>
     </div>
   );

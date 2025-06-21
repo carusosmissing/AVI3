@@ -18,6 +18,8 @@ interface AudioInputHook {
   setInputGain: (gain: number) => void;
   sensitivity: number;
   setSensitivity: (sensitivity: number) => void;
+  // Direct access to current audio level (no React state delay)
+  getCurrentAudioLevel: () => number;
 }
 
 export const useAudioInput = (): AudioInputHook => {
@@ -30,8 +32,23 @@ export const useAudioInput = (): AudioInputHook => {
   const [error, setError] = useState<string | null>(null);
   
   // Audio gain controls
-  const [inputGain, setInputGain] = useState(3.0); // Default 3x gain boost
-  const [sensitivity, setSensitivity] = useState(2.0); // Default 2x sensitivity multiplier
+  const [inputGain, setInputGain] = useState(2.0); // Reasonable gain for actual signal levels
+  const [sensitivity, setSensitivity] = useState(1.5); // Moderate sensitivity for raw audio
+
+  // Custom setInputGain that also updates the active gain node
+  const updateInputGain = useCallback((newGain: number) => {
+    setInputGain(newGain);
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = newGain;
+      console.log(`🎚️ Updated gain node to ${newGain.toFixed(1)}x (immediate)`);
+    }
+  }, []);
+
+  // Custom setSensitivity that logs the change
+  const updateSensitivity = useCallback((newSensitivity: number) => {
+    setSensitivity(newSensitivity);
+    console.log(`🔍 Updated sensitivity to ${newSensitivity.toFixed(1)}x`);
+  }, []);
 
   // Audio processing refs
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -45,9 +62,12 @@ export const useAudioInput = (): AudioInputHook => {
   const freqDataRef = useRef<Uint8Array | null>(null);
   const timeDataRef = useRef<Uint8Array | null>(null);
   
+  // Current audio level ref for immediate access (no React state delay)
+  const currentAudioLevelRef = useRef<number>(0);
+  
   // Configuration
   const FFT_SIZE = 2048;
-  const SMOOTHING_TIME_CONSTANT = 0.8;
+  const SMOOTHING_TIME_CONSTANT = 0.3; // Minimal smoothing for responsive analysis
   const UPDATE_INTERVAL = 100; // ms
 
   /**
@@ -90,7 +110,7 @@ export const useAudioInput = (): AudioInputHook => {
       
       // Create gain node for input amplification
       gainNodeRef.current = audioContextRef.current.createGain();
-      gainNodeRef.current.gain.value = inputGain;
+      gainNodeRef.current.gain.value = inputGain; // Use current inputGain value
       
       // Initialize data arrays
       const bufferLength = analyserRef.current.frequencyBinCount;
@@ -101,6 +121,7 @@ export const useAudioInput = (): AudioInputHook => {
       console.log(`   • Sample rate: ${audioContextRef.current.sampleRate} Hz`);
       console.log(`   • FFT size: ${FFT_SIZE}`);
       console.log(`   • Frequency bins: ${bufferLength}`);
+      console.log(`   • Initial gain: ${inputGain.toFixed(1)}x`);
       
       return true;
     } catch (err) {
@@ -108,7 +129,7 @@ export const useAudioInput = (): AudioInputHook => {
       setError('Failed to initialize audio processing');
       return false;
     }
-  }, []);
+  }, [inputGain]); // Add inputGain as dependency
 
   /**
    * Start audio input capture
@@ -129,28 +150,17 @@ export const useAudioInput = (): AudioInputHook => {
         await audioContextRef.current.resume();
       }
 
-      // Get user media
+      // Simple audio constraints that work reliably  
       const constraints: MediaStreamConstraints = {
         audio: selectedDeviceId 
-          ? { 
-              deviceId: { exact: selectedDeviceId },
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
-              sampleRate: 44100
-            }
-          : {
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
-              sampleRate: 44100
-            }
+          ? { deviceId: { exact: selectedDeviceId } }
+          : true
       };
-
-      console.log('🎤 Requesting media stream with constraints:', constraints);
+      
+      console.log('🎤 Requesting media stream...');
       streamRef.current = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Log stream info
+      // Enhanced stream diagnostics
       const tracks = streamRef.current.getAudioTracks();
       if (tracks.length > 0) {
         const track = tracks[0];
@@ -159,13 +169,34 @@ export const useAudioInput = (): AudioInputHook => {
         console.log(`   • Kind: ${track.kind}`);
         console.log(`   • Enabled: ${track.enabled}`);
         console.log(`   • Ready state: ${track.readyState}`);
+        console.log(`   • Muted: ${track.muted}`);
         console.log(`   • Settings:`, track.getSettings());
+        console.log(`   • Capabilities:`, track.getCapabilities());
+        
+        // Test if track is receiving any data
+        track.addEventListener('mute', () => {
+          console.warn('🔇 Audio track was muted!');
+        });
+        
+        track.addEventListener('unmute', () => {
+          console.log('🔊 Audio track unmuted');
+        });
+        
+        track.addEventListener('ended', () => {
+          console.warn('🛑 Audio track ended unexpectedly');
+        });
       }
       
       // Create audio source
       sourceRef.current = audioContextRef.current!.createMediaStreamSource(streamRef.current);
       
-      // Connect source -> gain -> analyser for better sensitivity
+      // Ensure gain node is using current values
+      if (gainNodeRef.current) {
+        gainNodeRef.current.gain.value = inputGain;
+        console.log(`🎚️ Set gain node to ${inputGain.toFixed(1)}x`);
+      }
+      
+      // Connect source -> gain -> analyser 
       sourceRef.current.connect(gainNodeRef.current!);
       gainNodeRef.current!.connect(analyserRef.current!);
       
@@ -186,6 +217,14 @@ export const useAudioInput = (): AudioInputHook => {
         console.log('   • Using default audio input device');
       }
       
+      // Additional diagnostics for BlackHole
+      if (tracks[0]?.label.includes('BlackHole')) {
+        console.log('🕳️ BlackHole detected! Make sure:');
+        console.log('   • Your audio source app is outputting to BlackHole');
+        console.log('   • BlackHole is receiving audio signal');
+        console.log('   • Check Audio MIDI Setup.app on macOS');
+      }
+      
     } catch (err) {
       console.error('❌ Failed to start audio input:', err);
       let errorMessage = 'Failed to access audio input.';
@@ -196,7 +235,7 @@ export const useAudioInput = (): AudioInputHook => {
         } else if (err.name === 'NotFoundError') {
           errorMessage = 'No audio input device found.';
         } else if (err.name === 'OverconstrainedError') {
-          errorMessage = 'Selected audio device does not support required constraints.';
+          errorMessage = 'Selected audio device does not support required constraints. Try a different device.';
         } else {
           errorMessage = `Audio error: ${err.message}`;
         }
@@ -206,7 +245,7 @@ export const useAudioInput = (): AudioInputHook => {
       setIsListening(false);
       setIsConnected(false);
     }
-  }, [selectedDeviceId, availableDevices, initializeAudioContext, getAudioDevices]);
+  }, [selectedDeviceId, availableDevices, initializeAudioContext, getAudioDevices, inputGain]);
 
   /**
    * Stop audio input capture
@@ -283,50 +322,79 @@ export const useAudioInput = (): AudioInputHook => {
       analyserRef.current.getByteFrequencyData(freqDataRef.current);
       analyserRef.current.getByteTimeDomainData(timeDataRef.current);
 
-      // Calculate audio level using multiple methods for better sensitivity
-      let rmsSum = 0;
-      let peakLevel = 0;
-      let freqSum = 0;
+      // Calculate audio level using multiple methods for better accuracy
       
-      // RMS calculation from time domain
+      // Method 1: Traditional RMS from time domain
+      let rms = 0;
       for (let i = 0; i < timeDataRef.current.length; i++) {
         const amplitude = (timeDataRef.current[i] - 128) / 128;
-        rmsSum += amplitude * amplitude;
-        peakLevel = Math.max(peakLevel, Math.abs(amplitude));
+        rms += amplitude * amplitude;
+      }
+      rms = Math.sqrt(rms / timeDataRef.current.length);
+      
+      // Method 2: Peak detection from time domain (more responsive)
+      let peak = 0;
+      for (let i = 0; i < timeDataRef.current.length; i++) {
+        const amplitude = Math.abs(timeDataRef.current[i] - 128) / 128;
+        if (amplitude > peak) peak = amplitude;
       }
       
-      // Sum frequency domain for additional sensitivity
+      // Method 3: Average energy from frequency domain (good for music)
+      let freqEnergy = 0;
       for (let i = 0; i < freqDataRef.current.length; i++) {
-        freqSum += freqDataRef.current[i] / 255;
+        freqEnergy += freqDataRef.current[i] / 255;
       }
+      freqEnergy = freqEnergy / freqDataRef.current.length;
       
-      const rms = Math.sqrt(rmsSum / timeDataRef.current.length);
-      const freqAvg = freqSum / freqDataRef.current.length;
+      // Method 4: Weighted frequency analysis (emphasize important frequencies)
+      let weightedEnergy = 0;
+      const totalBins = freqDataRef.current.length;
+      for (let i = 0; i < totalBins; i++) {
+        const freq = (i / totalBins) * (audioContextRef.current!.sampleRate / 2);
+        let weight = 1.0;
+        
+        // Boost important frequency ranges for music
+        if (freq >= 60 && freq <= 250) weight = 2.0;    // Bass/kick drums
+        if (freq >= 250 && freq <= 2000) weight = 1.5;  // Midrange/vocals
+        if (freq >= 2000 && freq <= 8000) weight = 1.2; // Presence
+        
+        weightedEnergy += (freqDataRef.current[i] / 255) * weight;
+      }
+      weightedEnergy = weightedEnergy / totalBins;
       
-      // Enhanced sensitivity calculation with user-adjustable gain
-      // Apply sensitivity multiplier and clamp to prevent distortion
-      const rawLevel = Math.max(rms, peakLevel * 0.7, freqAvg * 0.5);
-      const boostedLevel = Math.min(1.0, rawLevel * sensitivity);
+      // Combine methods for final level calculation
+      const rmsLevel = rms * 8.0;           // Boost RMS significantly
+      const peakLevel = peak * 2.0;         // Peak is already more responsive
+      const freqLevel = freqEnergy * 3.0;   // Frequency energy
+      const weightedLevel = weightedEnergy * 2.5; // Weighted frequency
       
-      setAudioLevel(boostedLevel);
+      // Take the maximum of the methods to ensure we catch any signal
+      const combinedLevel = Math.max(rmsLevel, peakLevel, freqLevel, weightedLevel);
+      
+      // Apply gain and sensitivity to the combined level
+      const finalLevel = Math.min(1.0, combinedLevel * inputGain * sensitivity);
+      
+      setAudioLevel(finalLevel);
+      currentAudioLevelRef.current = finalLevel;
 
       // Calculate advanced audio metrics
       const metrics = calculateAudioMetrics(freqDataRef.current, timeDataRef.current);
       setAudioMetrics(metrics);
 
-      // Log audio levels every second for debugging
+      // Enhanced logging every 3 seconds
       frameCount++;
       const now = performance.now();
-      if (now - lastLogTime > 1000) {
-        console.log(`🔊 Audio levels - RMS: ${rms.toFixed(3)}, Peak: ${peakLevel.toFixed(3)}, Freq: ${freqAvg.toFixed(3)}, Raw: ${rawLevel.toFixed(3)}, Final: ${boostedLevel.toFixed(3)}`);
-        console.log(`🎚️ Gain settings - Input Gain: ${inputGain.toFixed(1)}x, Sensitivity: ${sensitivity.toFixed(1)}x`);
-        
-        // Log some frequency data for debugging
-        const lowFreq = freqDataRef.current.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
-        const midFreq = freqDataRef.current.slice(10, 50).reduce((a, b) => a + b, 0) / 40;
-        const highFreq = freqDataRef.current.slice(50, 100).reduce((a, b) => a + b, 0) / 50;
-        console.log(`🎵 Frequency bands - Low: ${lowFreq.toFixed(1)}, Mid: ${midFreq.toFixed(1)}, High: ${highFreq.toFixed(1)}`);
-        
+      if (now - lastLogTime > 3000) {
+        console.log(`🔊 Audio Analysis:`, {
+          finalLevel: finalLevel.toFixed(4),
+          rmsLevel: (rms * 8.0).toFixed(4), 
+          peakLevel: (peak * 2.0).toFixed(4),
+          freqLevel: (freqEnergy * 3.0).toFixed(4),
+          weightedLevel: (weightedEnergy * 2.5).toFixed(4),
+          combinedLevel: combinedLevel.toFixed(4),
+          gain: inputGain,
+          sensitivity: sensitivity
+        });
         lastLogTime = now;
       }
 
@@ -334,9 +402,9 @@ export const useAudioInput = (): AudioInputHook => {
       animationFrameRef.current = requestAnimationFrame(analyze);
     };
 
-    console.log('🔄 Starting audio analysis loop...');
+    console.log('🔄 Starting audio analysis...');
     analyze();
-  }, []);
+  }, [inputGain, sensitivity]);
 
   /**
    * Calculate advanced audio metrics from frequency/time data
@@ -499,11 +567,11 @@ export const useAudioInput = (): AudioInputHook => {
     };
   }, [getAudioDevices, stopListening]);
 
-  // Update gain node when input gain changes
+  // Update gain node when inputGain changes
   useEffect(() => {
     if (gainNodeRef.current) {
       gainNodeRef.current.gain.value = inputGain;
-      console.log(`🎚️ Updated input gain to ${inputGain.toFixed(1)}x`);
+      console.log(`🎚️ Updated audio gain to ${inputGain.toFixed(1)}x`);
     }
   }, [inputGain]);
 
@@ -520,9 +588,11 @@ export const useAudioInput = (): AudioInputHook => {
     refreshDevices,
     error,
     inputGain,
-    setInputGain,
+    setInputGain: updateInputGain,
     sensitivity,
-    setSensitivity
+    setSensitivity: updateSensitivity,
+    // Direct access to current audio level (no React state delay)
+    getCurrentAudioLevel: () => currentAudioLevelRef.current
   };
 };
 

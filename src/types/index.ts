@@ -10,6 +10,13 @@ export interface Track {
   duration: number; // in seconds
   filepath: string;
   dateAdded: Date;
+  // Additional Rekordbox-specific fields
+  year?: number;
+  composer?: string;
+  remixer?: string;
+  label?: string;
+  comments?: string;
+  // Parsed data structures
   waveform?: WaveformData;
   beatGrid?: BeatGridData;
   hotCues: HotCue[];
@@ -34,6 +41,7 @@ export interface Beat {
   time: number; // in seconds
   beatNumber: number;
   isDownbeat: boolean;
+  localBpm?: number; // BPM at this specific beat (for tempo changes)
 }
 
 export interface HotCue {

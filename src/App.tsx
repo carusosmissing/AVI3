@@ -6,7 +6,6 @@ import TrackIdentificationPanel from './components/track-identification-panel';
 import useMIDIBPM from './hooks/useMIDIBPM';
 
 import { DDJFlx4Controller } from './controllers/ddj-flx4-controller';
-import { RekordboxParser } from './parsers/rekordbox-parser';
 import { DDJControllerState, VisualParams, AppState, Track } from './types';
 
 function App() {
@@ -26,15 +25,12 @@ function App() {
 
   // Instances
   const [ddjController] = useState(() => new DDJFlx4Controller());
-  const [rekordboxParser] = useState(() => new RekordboxParser());
 
   // Connection status
   const [isControllerConnected, setIsControllerConnected] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
 
-  // File upload state
-  const [isLoadingTracks, setIsLoadingTracks] = useState(false);
-  const [trackCount, setTrackCount] = useState(0);
+
   
   // Visualizer mode
   const [useAIVisualizer, setUseAIVisualizer] = useState(true);
@@ -44,6 +40,7 @@ function App() {
   
   // Track identification state
   const [identificationTracks, setIdentificationTracks] = useState<Track[]>([]);
+  const [identificationResult, setIdentificationResult] = useState<any>(null);
 
   // Prepare BPM data for visualizer
   const bpmData = {
@@ -59,6 +56,13 @@ function App() {
   const handleTracksLoaded = useCallback((tracks: Track[]) => {
     setIdentificationTracks(tracks);
     console.log(`🎯 Track identification system loaded ${tracks.length} tracks for AI analysis`);
+  }, []);
+
+  /**
+   * Handle track identification results from AI system
+   */
+  const handleTrackIdentification = useCallback((result: any) => {
+    setIdentificationResult(result);
   }, []);
 
   /**
@@ -248,32 +252,7 @@ function App() {
     };
   }, [ddjController]);
 
-  /**
-   * Handle rekordbox XML file upload
-   */
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
 
-    setIsLoadingTracks(true);
-    console.log('📁 Loading rekordbox collection...');
-
-    try {
-      const text = await file.text();
-      const tracks = await rekordboxParser.parseCollection(text);
-      
-      setAppState(prev => ({ ...prev, tracks }));
-      setTrackCount(tracks.length);
-      
-      console.log(`🎵 Loaded ${tracks.length} tracks from rekordbox`);
-      console.log(`🔍 First few tracks:`, tracks.slice(0, 3).map(t => ({ name: t.name, bpm: t.bpm })));
-    } catch (error) {
-      console.error('❌ Error loading tracks:', error);
-      alert('Error loading rekordbox file. Make sure it\'s a valid XML export.');
-    } finally {
-      setIsLoadingTracks(false);
-    }
-  }, [rekordboxParser]);
 
   /**
    * Load track to specific deck
@@ -414,23 +393,7 @@ function App() {
             💡 <strong>Audio Input:</strong> Use the AI panel (top-right) to control audio input for enhanced AI-powered visualizations!
           </div>
 
-          {/* rekordbox File Upload */}
-          <div className="file-upload-section">
-            <label htmlFor="rekordbox-upload" className="upload-label">
-              📁 Load rekordbox Collection
-            </label>
-            <input
-              id="rekordbox-upload"
-              type="file"
-              accept=".xml"
-              onChange={handleFileUpload}
-              disabled={isLoadingTracks}
-            />
-            {isLoadingTracks && <div className="loading">Loading tracks...</div>}
-            {trackCount > 0 && (
-              <div className="track-count">✅ {trackCount} tracks loaded</div>
-            )}
-          </div>
+
 
           {/* Controller Status */}
           <div className="controller-info">
@@ -456,31 +419,7 @@ function App() {
             </div>
           </div>
 
-          {/* BPM Display */}
-          <div className="bpm-info">
-            <h3>🎵 Live BPM from XLF</h3>
-            <div className="bpm-values">
-              <div className="deck-bpm">
-                <strong>Deck A:</strong> {appState.controller.channelA.bpm} BPM
-                {appState.controller.channelA.play && <span className="playing-indicator"> ▶️ PLAYING</span>}
-              </div>
-              <div className="deck-bpm">
-                <strong>Deck B:</strong> {appState.controller.channelB.bpm} BPM
-                {appState.controller.channelB.play && <span className="playing-indicator"> ▶️ PLAYING</span>}
-              </div>
-              <div className="active-bpm">
-                <strong>Current Active BPM:</strong> {
-                  appState.controller.channelA.play && appState.controller.channelB.play
-                    ? `${appState.controller.channelA.bpm} / ${appState.controller.channelB.bpm} BPM (Mixed)`
-                    : appState.controller.channelA.play
-                    ? `${appState.controller.channelA.bpm} BPM (Deck A)`
-                    : appState.controller.channelB.play
-                    ? `${appState.controller.channelB.bpm} BPM (Deck B)`
-                    : 'No tracks playing'
-                }
-              </div>
-            </div>
-          </div>
+
 
           {/* Track Identification Panel */}
           <div className="track-identification-section">
@@ -493,7 +432,7 @@ function App() {
             }}>
               <TrackIdentificationPanel 
                 onTracksLoaded={handleTracksLoaded}
-                identificationResult={null} // Will be populated by AI system
+                identificationResult={identificationResult}
                 isAIReady={true} // Assume AI is ready in this context
               />
             </div>
@@ -535,6 +474,8 @@ function App() {
           controller={ddjController}
           controllerState={appState.controller}
           visualParams={appState.visualParams}
+          identificationTracks={identificationTracks}
+          onTrackIdentification={handleTrackIdentification}
         />
       ) : (
         <VisualizerScene 

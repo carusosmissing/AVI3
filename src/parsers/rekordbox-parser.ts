@@ -1,300 +1,319 @@
-import { XMLParser } from 'fast-xml-parser';
-import { Track, BeatGridData, HotCue, MemoryCue, WaveformData, EnergyAnalysis, SongStructure } from '../types';
+import { Track, HotCue, MemoryCue, BeatGridData, Beat } from '../types';
 
 export class RekordboxParser {
-  private parser: XMLParser;
-
-  constructor() {
-    this.parser = new XMLParser({
-      ignoreAttributes: false,
-      attributeNamePrefix: '@_',
-      parseAttributeValue: true,
-      trimValues: true
-    });
-  }
-
   /**
-   * Parse rekordbox XML collection file
-   * @param xmlContent - Raw XML string from rekordbox export
-   * @returns Array of parsed tracks
+   * Parse Rekordbox XML export file
    */
-  async parseCollection(xmlContent: string): Promise<Track[]> {
+  public static async parseXML(xmlContent: string): Promise<Track[]> {
+    console.log('🎵 Starting Rekordbox XML parsing...');
+    
     try {
-      console.log('🎵 Parsing rekordbox collection...');
-      const parsed = this.parser.parse(xmlContent);
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
       
-      // Navigate to the COLLECTION section in the XML structure
-      const collection = parsed?.DJ_PLAYLISTS?.COLLECTION?.TRACK;
-      
-      if (!collection) {
-        throw new Error('No tracks found in XML collection');
+      // Check for parsing errors
+      const parseError = xmlDoc.querySelector('parsererror');
+      if (parseError) {
+        throw new Error(`XML parsing error: ${parseError.textContent}`);
       }
-
-      // Handle both single track and multiple tracks
-      const tracks = Array.isArray(collection) ? collection : [collection];
       
-      const parsedTracks = tracks.map((track: any) => this.parseTrack(track));
+      // Get all TRACK elements
+      const trackElements = xmlDoc.querySelectorAll('TRACK');
+      console.log(`📚 Found ${trackElements.length} tracks in XML`);
       
-      console.log(`✅ Successfully parsed ${parsedTracks.length} tracks`);
-      return parsedTracks;
+      const tracks: Track[] = [];
+      
+      for (let i = 0; i < trackElements.length; i++) {
+        const trackElement = trackElements[i];
+        try {
+          const track = this.parseTrackElement(trackElement);
+          if (track) {
+            tracks.push(track);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to parse track ${i + 1}:`, error);
+        }
+      }
+      
+      console.log(`✅ Successfully parsed ${tracks.length} tracks from Rekordbox XML`);
+      return tracks;
       
     } catch (error) {
-      console.error('❌ Error parsing rekordbox XML:', error);
-      throw error;
+      console.error('❌ Error parsing Rekordbox XML:', error);
+      throw new Error(`Failed to parse Rekordbox XML: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-
+  
   /**
-   * Parse individual track from XML data
+   * Parse individual TRACK element
    */
-  private parseTrack(trackData: any): Track {
-    const attributes = trackData['@_'] || {};
+  private static parseTrackElement(trackElement: Element): Track | null {
+    try {
+      // Extract basic track information
+      const trackId = trackElement.getAttribute('TrackID') || '';
+      const name = trackElement.getAttribute('Name') || '';
+      const artist = trackElement.getAttribute('Artist') || '';
+      const album = trackElement.getAttribute('Album') || '';
+      const genre = trackElement.getAttribute('Genre') || '';
+      const composer = trackElement.getAttribute('Composer') || '';
+      const remixer = trackElement.getAttribute('Remixer') || '';
+      const label = trackElement.getAttribute('Label') || '';
+      const comments = trackElement.getAttribute('Comments') || '';
+      const tonality = trackElement.getAttribute('Tonality') || '';
+      const mix = trackElement.getAttribute('Mix') || '';
+      
+      // Parse numerical values
+      const bpm = parseFloat(trackElement.getAttribute('AverageBpm') || '0');
+      const duration = parseInt(trackElement.getAttribute('TotalTime') || '0');
+      const year = parseInt(trackElement.getAttribute('Year') || '0');
+      const trackNumber = parseInt(trackElement.getAttribute('TrackNumber') || '0');
+      const discNumber = parseInt(trackElement.getAttribute('DiscNumber') || '0');
+      const bitRate = parseInt(trackElement.getAttribute('BitRate') || '0');
+      const sampleRate = parseInt(trackElement.getAttribute('SampleRate') || '0');
+      const playCount = parseInt(trackElement.getAttribute('PlayCount') || '0');
+      const rating = parseInt(trackElement.getAttribute('Rating') || '0');
+      
+      // Parse date
+      const dateAddedStr = trackElement.getAttribute('DateAdded') || '';
+      const dateAdded = dateAddedStr ? new Date(dateAddedStr) : new Date();
+      
+      // Extract file location
+      const location = trackElement.getAttribute('Location') || '';
+      
+      // Parse key information (Rekordbox uses musical notation)
+      let key = tonality || 'C';
+      // Clean up the key notation if needed
+      key = this.normalizeKeyNotation(key);
+      
+      // Skip tracks with no name or artist (completely empty tracks)
+      if (!name && !artist) {
+        console.log(`⏭️ Skipping empty track with ID: ${trackId}`);
+        return null;
+      }
+      
+      // Parse TEMPO elements for beat grid data
+      const beatGrid = this.parseBeatGrid(trackElement, bpm);
+      
+      // Parse HOT_CUE elements
+      const hotCues = this.parseHotCues(trackElement);
+      
+      // Parse MEMORY_CUE elements  
+      const memoryCues = this.parseMemoryCues(trackElement);
+      
+      // Estimate energy analysis based on genre and BPM
+      const energyAnalysis = this.estimateEnergyAnalysis(genre, bpm, duration);
+      
+      // Create Track object
+      const track: Track = {
+        id: trackId || `track_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: name || 'Unknown Track',
+        artist: artist || 'Unknown Artist',
+        album,
+        genre,
+        bpm: bpm > 0 ? bpm : 120, // Default to 120 BPM if invalid
+        key,
+        duration: duration > 0 ? duration : 180, // Default to 3 minutes if invalid
+        filepath: this.cleanFilePath(location),
+        dateAdded,
+        year: year > 0 ? year : undefined,
+        composer: composer || undefined,
+        remixer: remixer || undefined,
+        label: label || undefined,
+        comments: comments || undefined,
+        beatGrid,
+        hotCues,
+        memoryCues,
+        energyAnalysis
+      };
+      
+      return track;
+      
+    } catch (error) {
+      console.error('❌ Error parsing track element:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Parse TEMPO elements for beat grid data
+   */
+  private static parseBeatGrid(trackElement: Element, trackBpm: number): BeatGridData {
+    const tempoElements = trackElement.querySelectorAll('TEMPO');
+    const beats: Beat[] = [];
+    
+    tempoElements.forEach((tempoElement, index) => {
+      const inizio = parseFloat(tempoElement.getAttribute('Inizio') || '0'); // Start position
+      const bpm = parseFloat(tempoElement.getAttribute('Bpm') || trackBpm.toString());
+      const metro = tempoElement.getAttribute('Metro') || '4/4';
+      const battito = parseInt(tempoElement.getAttribute('Battito') || '1');
+      
+      // Convert Inizio (which appears to be a fraction of the track) to seconds
+      // This is an approximation - Rekordbox uses complex timing
+      const timeInSeconds = inizio * 60; // Rough conversion
+      
+      beats.push({
+        time: timeInSeconds,
+        beatNumber: index + 1,
+        isDownbeat: battito === 1, // First beat of measure
+        localBpm: bpm
+      });
+    });
     
     return {
-      id: attributes.TrackID || 'unknown',
-      name: attributes.Name || 'Unknown Track',
-      artist: attributes.Artist || 'Unknown Artist',
-      album: attributes.Album,
-      genre: attributes.Genre,
-      bpm: parseFloat(attributes.AverageBpm) || 120,
-      key: attributes.Tonality || 'C',
-      duration: parseInt(attributes.TotalTime) || 0,
-      filepath: attributes.Location || '',
-      dateAdded: new Date(attributes.DateAdded || Date.now()),
-      hotCues: this.parseHotCues(trackData),
-      memoryCues: this.parseMemoryCues(trackData),
-      beatGrid: this.parseBeatGrid(trackData, parseFloat(attributes.AverageBpm) || 120),
-      waveform: this.parseWaveform(trackData),
-      energyAnalysis: this.analyzeEnergy(trackData),
-      songStructure: this.analyzeSongStructure(trackData)
+      beats,
+      bpm: trackBpm,
+      firstBeatTime: beats.length > 0 ? beats[0].time : 0
     };
   }
-
+  
   /**
-   * Parse hot cues from track data
+   * Parse HOT_CUE elements
    */
-  private parseHotCues(trackData: any): HotCue[] {
+  private static parseHotCues(trackElement: Element): HotCue[] {
+    const hotCueElements = trackElement.querySelectorAll('POSITION_MARK[Type="0"]'); // Type 0 = Hot Cue
     const hotCues: HotCue[] = [];
     
-    // rekordbox stores hot cues in POSITION_MARK elements
-    const positionMarks = trackData.POSITION_MARK || [];
-    const marks = Array.isArray(positionMarks) ? positionMarks : [positionMarks];
-    
-    marks.forEach((mark: any, index: number) => {
-      const attrs = mark['@_'] || {};
-      if (attrs.Type === 0) { // Type 0 = Hot Cue in rekordbox
-        hotCues.push({
-          id: index,
-          name: attrs.Name || `Cue ${index + 1}`,
-          time: parseFloat(attrs.Start) / 1000 || 0, // Convert ms to seconds
-          color: this.mapRekordboxColor(attrs.Num),
-          type: 'cue'
-        });
-      }
+    hotCueElements.forEach((cueElement, index) => {
+      const start = parseFloat(cueElement.getAttribute('Start') || '0');
+      const name = cueElement.getAttribute('Name') || `Hot Cue ${index + 1}`;
+      const num = parseInt(cueElement.getAttribute('Num') || index.toString());
+      
+      hotCues.push({
+        id: num,
+        name,
+        time: start,
+        color: this.getHotCueColor(num),
+        type: 'cue'
+      });
     });
     
     return hotCues;
   }
-
+  
   /**
-   * Parse memory cues from track data
+   * Parse MEMORY_CUE elements
    */
-  private parseMemoryCues(trackData: any): MemoryCue[] {
+  private static parseMemoryCues(trackElement: Element): MemoryCue[] {
+    const memoryCueElements = trackElement.querySelectorAll('POSITION_MARK[Type="1"]'); // Type 1 = Memory Cue
     const memoryCues: MemoryCue[] = [];
     
-    const positionMarks = trackData.POSITION_MARK || [];
-    const marks = Array.isArray(positionMarks) ? positionMarks : [positionMarks];
-    
-    marks.forEach((mark: any, index: number) => {
-      const attrs = mark['@_'] || {};
-      if (attrs.Type === 1) { // Type 1 = Memory Cue in rekordbox
-        memoryCues.push({
-          id: index,
-          time: parseFloat(attrs.Start) / 1000 || 0,
-          color: this.mapRekordboxColor(attrs.Num),
-          comment: attrs.Name
-        });
-      }
+    memoryCueElements.forEach((cueElement, index) => {
+      const start = parseFloat(cueElement.getAttribute('Start') || '0');
+      const name = cueElement.getAttribute('Name') || '';
+      const num = parseInt(cueElement.getAttribute('Num') || index.toString());
+      
+      memoryCues.push({
+        id: num,
+        time: start,
+        color: '#ffffff',
+        comment: name
+      });
     });
     
     return memoryCues;
   }
-
+  
   /**
-   * Parse beat grid data from track
+   * Normalize key notation for consistency
    */
-  private parseBeatGrid(trackData: any, bpm: number): BeatGridData {
-    // rekordbox stores beat grid in TEMPO elements
-    const tempoData = trackData.TEMPO || [];
-    const tempos = Array.isArray(tempoData) ? tempoData : [tempoData];
+  private static normalizeKeyNotation(key: string): string {
+    if (!key) return 'C';
     
-    const beats = tempos.map((tempo: any, index: number) => {
-      const attrs = tempo['@_'] || {};
-      return {
-        time: parseFloat(attrs.Inizio) / 1000 || 0,
-        beatNumber: index + 1,
-        isDownbeat: (index % 4) === 0 // Every 4th beat is a downbeat
-      };
-    });
-
-    return {
-      beats,
-      bpm,
-      firstBeatTime: beats[0]?.time || 0
-    };
-  }
-
-  /**
-   * Parse waveform data (simplified - rekordbox doesn't export detailed waveform)
-   */
-  private parseWaveform(trackData: any): WaveformData | undefined {
-    // rekordbox XML doesn't contain detailed waveform data
-    // We'll generate a basic structure for future enhancement
-    const duration = parseInt(trackData['@_']?.TotalTime) || 0;
+    // Handle Rekordbox key notation
+    // Examples: "Bbm", "C#", "Am", etc.
+    let normalized = key.trim();
     
-    if (duration === 0) return undefined;
-
-    // Generate basic waveform peaks (this would be replaced with actual audio analysis)
-    const sampleRate = 44100;
-    const peaksCount = Math.floor(duration / 1000 * 10); // 10 peaks per second
-    const peaks = Array.from({ length: peaksCount }, () => Math.random());
-
-    return {
-      peaks,
-      length: peaksCount,
-      sampleRate
-    };
-  }
-
-  /**
-   * Analyze energy levels (basic implementation)
-   */
-  private analyzeEnergy(trackData: any): EnergyAnalysis {
-    // This is a simplified analysis - real implementation would analyze audio
-    const bpm = parseFloat(trackData['@_']?.AverageBpm) || 120;
-    const genre = trackData['@_']?.Genre || '';
+    // Convert flat notation
+    normalized = normalized.replace('b', '♭');
     
-    // Basic energy estimation based on BPM and genre
-    let baseEnergy = Math.min(10, Math.max(1, (bpm - 60) / 20));
+    // Convert sharp notation  
+    normalized = normalized.replace('#', '♯');
     
-    // Adjust based on genre
-    if (genre.toLowerCase().includes('house') || genre.toLowerCase().includes('techno')) {
-      baseEnergy += 2;
-    } else if (genre.toLowerCase().includes('ambient') || genre.toLowerCase().includes('chill')) {
-      baseEnergy -= 2;
+    // Ensure major/minor notation is consistent
+    if (normalized.includes('m') && !normalized.includes('♭') && !normalized.includes('♯')) {
+      normalized = normalized.replace('m', ' minor');
     }
     
-    baseEnergy = Math.min(10, Math.max(1, baseEnergy));
+    return normalized;
+  }
+  
+  /**
+   * Clean up file path from Rekordbox format
+   */
+  private static cleanFilePath(location: string): string {
+    if (!location) return '';
+    
+    // Rekordbox stores paths as file:// URIs, decode them
+    try {
+      const decoded = decodeURIComponent(location);
+      // Remove file:// prefix
+      return decoded.replace(/^file:\/\//, '');
+    } catch (error) {
+      return location;
+    }
+  }
+  
+  /**
+   * Get color for hot cue based on number
+   */
+  private static getHotCueColor(num: number): string {
+    const colors = [
+      '#ff4757', '#2ed573', '#3742fa', '#ffa502',
+      '#7bed9f', '#ff6b6b', '#70a1ff', '#5352ed'
+    ];
+    return colors[num % colors.length];
+  }
+  
+  /**
+   * Estimate energy analysis based on genre and BPM
+   */
+  private static estimateEnergyAnalysis(genre: string, bpm: number, duration: number) {
+    const genreLower = (genre || '').toLowerCase();
+    let baseEnergy = 5; // Default medium energy
+    
+    // Adjust energy based on genre
+    if (genreLower.includes('house') || genreLower.includes('techno') || genreLower.includes('dance')) {
+      baseEnergy = 7;
+    } else if (genreLower.includes('ambient') || genreLower.includes('classical')) {
+      baseEnergy = 3;
+    } else if (genreLower.includes('rock') || genreLower.includes('metal')) {
+      baseEnergy = 8;
+    } else if (genreLower.includes('electronic') || genreLower.includes('edm')) {
+      baseEnergy = 8;
+    }
+    
+    // Adjust based on BPM
+    if (bpm > 140) baseEnergy += 1;
+    if (bpm > 160) baseEnergy += 1;
+    if (bpm < 100) baseEnergy -= 1;
+    
+    // Clamp to 1-10 range
+    baseEnergy = Math.max(1, Math.min(10, baseEnergy));
     
     return {
       overall: baseEnergy,
-      intro: baseEnergy * 0.6,
-      verse: baseEnergy * 0.8,
-      chorus: baseEnergy,
-      bridge: baseEnergy * 0.9,
-      outro: baseEnergy * 0.5
+      intro: Math.max(1, baseEnergy - 2),
+      verse: Math.max(1, baseEnergy - 1), 
+      chorus: Math.min(10, baseEnergy + 1),
+      bridge: baseEnergy,
+      outro: Math.max(1, baseEnergy - 3)
     };
   }
+}
 
-  /**
-   * Analyze song structure (basic implementation)
-   */
-  private analyzeSongStructure(trackData: any): SongStructure {
-    const duration = parseInt(trackData['@_']?.TotalTime) / 1000 || 0;
-    
-    if (duration === 0) {
-      return { verses: [], choruses: [], bridges: [] };
-    }
-
-    // Basic song structure estimation (this would be enhanced with actual analysis)
-    return {
-      intro: { start: 0, end: duration * 0.1 },
-      verses: [
-        { start: duration * 0.1, end: duration * 0.3 },
-        { start: duration * 0.5, end: duration * 0.7 }
-      ],
-      choruses: [
-        { start: duration * 0.3, end: duration * 0.5 },
-        { start: duration * 0.7, end: duration * 0.9 }
-      ],
-      bridges: [
-        { start: duration * 0.45, end: duration * 0.55 }
-      ],
-      outro: { start: duration * 0.9, end: duration }
+/**
+ * Utility function to read file as text
+ */
+export function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      resolve(text);
     };
-  }
-
-  /**
-   * Map rekordbox color numbers to CSS colors
-   */
-  private mapRekordboxColor(colorNum: number): string {
-    const colorMap: { [key: number]: string } = {
-      0: '#FF0000', // Red
-      1: '#FF8000', // Orange  
-      2: '#FFFF00', // Yellow
-      3: '#80FF00', // Lime
-      4: '#00FF00', // Green
-      5: '#00FF80', // Spring Green
-      6: '#00FFFF', // Cyan
-      7: '#0080FF', // Sky Blue
-      8: '#0000FF', // Blue
-      9: '#8000FF', // Purple
-      10: '#FF00FF', // Magenta
-      11: '#FF0080', // Pink
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
     };
-    
-    return colorMap[colorNum] || '#FFFFFF';
-  }
-
-  /**
-   * Search tracks by various criteria
-   */
-  searchTracks(tracks: Track[], query: string): Track[] {
-    const lowercaseQuery = query.toLowerCase();
-    
-    return tracks.filter(track => 
-      track.name.toLowerCase().includes(lowercaseQuery) ||
-      track.artist.toLowerCase().includes(lowercaseQuery) ||
-      track.album?.toLowerCase().includes(lowercaseQuery) ||
-      track.genre?.toLowerCase().includes(lowercaseQuery) ||
-      track.key.toLowerCase().includes(lowercaseQuery)
-    );
-  }
-
-  /**
-   * Get tracks by BPM range
-   */
-  getTracksByBPMRange(tracks: Track[], minBPM: number, maxBPM: number): Track[] {
-    return tracks.filter(track => track.bpm >= minBPM && track.bpm <= maxBPM);
-  }
-
-  /**
-   * Get tracks by key compatibility (for harmonic mixing)
-   */
-  getCompatibleTracks(tracks: Track[], currentKey: string): Track[] {
-    const compatibleKeys = this.getCompatibleKeys(currentKey);
-    return tracks.filter(track => compatibleKeys.includes(track.key));
-  }
-
-  /**
-   * Get harmonically compatible keys using Camelot wheel
-   */
-  private getCompatibleKeys(key: string): string[] {
-    const camelotWheel: { [key: string]: string[] } = {
-      'C': ['C', 'F', 'G', 'Am', 'Dm', 'Em'],
-      'G': ['G', 'C', 'D', 'Em', 'Am', 'Bm'],
-      'D': ['D', 'G', 'A', 'Bm', 'Em', 'F#m'],
-      'A': ['A', 'D', 'E', 'F#m', 'Bm', 'C#m'],
-      'E': ['E', 'A', 'B', 'C#m', 'F#m', 'G#m'],
-      'B': ['B', 'E', 'F#', 'G#m', 'C#m', 'D#m'],
-      'F#': ['F#', 'B', 'C#', 'D#m', 'G#m', 'A#m'],
-      'C#': ['C#', 'F#', 'G#', 'A#m', 'D#m', 'Fm'],
-      'G#': ['G#', 'C#', 'D#', 'Fm', 'A#m', 'Cm'],
-      'D#': ['D#', 'G#', 'A#', 'Cm', 'Fm', 'Gm'],
-      'A#': ['A#', 'D#', 'F', 'Gm', 'Cm', 'Dm'],
-      'F': ['F', 'A#', 'C', 'Dm', 'Gm', 'Am']
-    };
-    
-    return camelotWheel[key] || [key];
-  }
+    reader.readAsText(file);
+  });
 } 

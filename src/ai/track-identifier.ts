@@ -59,8 +59,40 @@ export class AITrackIdentifier {
    * Load track database from Rekordbox collection
    */
   public loadTrackDatabase(tracks: Track[]): void {
-    this.trackDatabase = tracks;
-    console.log(`📚 Loaded ${tracks.length} tracks into identification database`);
+    console.log(`📥 Attempting to load ${tracks.length} tracks into database...`);
+    
+    // Much more lenient filtering - only reject completely empty tracks
+    const validTracks = tracks.filter((track, index) => {
+      const hasAnyName = track.name && track.name.trim() !== '';
+      const hasAnyArtist = track.artist && track.artist.trim() !== '';
+      const hasValidBPM = track.bpm && track.bpm > 0;
+      
+      // Very lenient - accept tracks with at least some basic info
+      const isValid = hasAnyName || hasAnyArtist || hasValidBPM;
+      
+      // Log first few tracks regardless of validity for debugging
+      if (index < 5) {
+        console.log(`🔍 Track ${index + 1}: "${track.name}" by "${track.artist}" (BPM: ${track.bpm}) - Valid: ${isValid}`);
+      }
+      
+      if (!isValid && index < 10) {
+        console.log(`🚫 Filtered out track ${index + 1}: "${track.name}" by "${track.artist}" (BPM: ${track.bpm}) - completely empty`);
+      }
+      
+      return isValid;
+    });
+    
+    console.log(`🧹 Filtered out ${tracks.length - validTracks.length} tracks with missing metadata`);
+    
+    this.trackDatabase = [...validTracks]; // Create a copy to ensure proper storage
+    console.log(`📚 Successfully loaded ${this.trackDatabase.length} valid tracks into identification database`);
+    
+    if (this.trackDatabase.length > 0) {
+      console.log(`🔍 Database verification: First track: "${this.trackDatabase[0]?.name}" by "${this.trackDatabase[0]?.artist}"`);
+      console.log(`🔍 Last track: "${this.trackDatabase[this.trackDatabase.length - 1]?.name}" by "${this.trackDatabase[this.trackDatabase.length - 1]?.artist}"`);
+    } else {
+      console.log('⚠️ Warning: No valid tracks found in database after filtering');
+    }
     
     // Pre-process tracks for faster matching
     this.preprocessTracks();
@@ -248,10 +280,12 @@ export class AITrackIdentifier {
   ): Promise<TrackMatch[]> {
     const matches: TrackMatch[] = [];
     
+    console.log(`🔍 Searching through ${this.trackDatabase.length} tracks for matches...`);
+    
     for (const track of this.trackDatabase) {
       const matchScore = this.calculateTrackMatchScore(audioMetrics, audioLevel, track, midiData);
       
-      if (matchScore.overall > 0.2) { // Lower threshold for testing
+      if (matchScore.overall > 0.4) { // Higher threshold for quality matches
         matches.push({
           track,
           confidence: matchScore.overall,
@@ -262,7 +296,21 @@ export class AITrackIdentifier {
       }
     }
     
+    console.log(`🎯 Found ${matches.length} potential matches with scores above 0.4`);
+    
     matches.sort((a, b) => b.confidence - a.confidence);
+    
+    // Log top matches for debugging
+    if (matches.length > 0) {
+      console.log('🏆 Top 3 matches:');
+      matches.slice(0, 3).forEach((match, index) => {
+        console.log(`  ${index + 1}. "${match.track.name}" by ${match.track.artist} (${(match.confidence * 100).toFixed(1)}%)`);
+        console.log(`     Scores: tempo=${(match.matchedFeatures.tempo * 100).toFixed(0)}%, key=${(match.matchedFeatures.key * 100).toFixed(0)}%, energy=${(match.matchedFeatures.energy * 100).toFixed(0)}%, spectral=${(match.matchedFeatures.spectral * 100).toFixed(0)}%`);
+      });
+    } else {
+      console.log('❌ No matches found - this might indicate the matching algorithm needs adjustment');
+    }
+    
     return matches.slice(0, 10);
   }
 
@@ -275,41 +323,101 @@ export class AITrackIdentifier {
     track: Track,
     midiData?: any
   ): TrackMatch['matchedFeatures'] {
+    // Start with zero scores - tracks must earn their points
     let tempoScore = 0;
-    let keyScore = 0.3; // Give a baseline score even without key data
-    let energyScore = 0.2; // Give a baseline score 
-    let spectralScore = 0.4; // Give a baseline score
+    let keyScore = 0;
+    let energyScore = 0;
+    let spectralScore = 0;
     
-    // Tempo matching - make more lenient
-    if (midiData?.bpm && track.bpm) {
-      const tempoDiff = Math.abs(midiData.bpm - track.bpm) / track.bpm;
-      tempoScore = Math.max(0, 1 - (tempoDiff * 0.5)); // More lenient tempo matching
-    } else {
-      // If no MIDI BPM, give a neutral score
-      tempoScore = 0.4;
+    // GENRE FILTERING FIRST - eliminate obvious mismatches
+    const detectedGenre = this.detectGenreFromAudio(audioMetrics);
+    const genreCompatible = this.checkGenreCompatibility(detectedGenre, track.genre);
+    
+    // If genres are incompatible, eliminate completely for electronic music
+    const genrePenalty = genreCompatible ? 1.0 : 0.0;
+    
+    // Debug logging for genre matching
+    if (track.name === 'Hey Nineteen' || track.name === "Don't Stop Believin'" || track.artist === 'Journey') {
+      console.log(`🎭 Genre Debug: "${track.name}" by ${track.artist}:`);
+      console.log(`   Detected: ${detectedGenre}, Track: ${track.genre}`);
+      console.log(`   Compatible: ${genreCompatible}, Penalty: ${genrePenalty}`);
     }
     
-    // Key matching using chroma features  
+    // Tempo matching - estimate BPM from audio if no MIDI
+    const estimatedBPM = this.estimateBPMFromAudio(audioMetrics, midiData);
+    if (estimatedBPM > 0 && track.bpm > 0) {
+      const tempoDiff = Math.abs(estimatedBPM - track.bpm);
+      if (tempoDiff <= 3) tempoScore = 1.0;      // Perfect match
+      else if (tempoDiff <= 6) tempoScore = 0.9; // Excellent  
+      else if (tempoDiff <= 10) tempoScore = 0.7; // Good
+      else if (tempoDiff <= 15) tempoScore = 0.5; // Okay
+      else if (tempoDiff <= 20) tempoScore = 0.3; // Poor
+      else tempoScore = 0.1; // Very poor
+    }
+    
+    // Key matching - only score if we have good chroma data
     if (audioMetrics.chroma && audioMetrics.chroma.length >= 12 && track.key) {
-      const calculatedScore = this.calculateKeyMatchScore(audioMetrics.chroma, track.key);
-      keyScore = Math.max(keyScore, calculatedScore);
+      const rawKeyScore = this.calculateKeyMatchScore(audioMetrics.chroma, track.key);
+      // Only give points for good key matches
+      if (rawKeyScore > 0.6) keyScore = rawKeyScore;
+      else if (rawKeyScore > 0.4) keyScore = rawKeyScore * 0.7;
+      else keyScore = 0;
     }
     
-    // Energy matching - make more lenient
-    if (track.energyAnalysis && audioLevel > 0) {
+    // Energy matching - compare audio energy to track energy
+    if (track.energyAnalysis && audioLevel > 0.1) {
       const trackEnergy = track.energyAnalysis.overall / 10;
       const energyDiff = Math.abs(trackEnergy - audioLevel);
-      energyScore = Math.max(0.2, 1 - (energyDiff * 0.8)); // More lenient energy matching
+      if (energyDiff <= 0.2) energyScore = 1.0;
+      else if (energyDiff <= 0.4) energyScore = 0.7;
+      else if (energyDiff <= 0.6) energyScore = 0.4;
+      else energyScore = 0.1;
     }
     
-    // Spectral matching based on genre - always give some score
-    const calculatedSpectral = this.calculateSpectralMatchScore(audioMetrics, track);
-    spectralScore = Math.max(spectralScore, calculatedSpectral);
+    // Spectral matching - must be strict about audio characteristics
+    spectralScore = this.calculateSpectralMatchScore(audioMetrics, track);
     
-    // More balanced weighting
-    const overall = (tempoScore * 0.25 + keyScore * 0.25 + energyScore * 0.25 + spectralScore * 0.25);
+    // Debug logging for score calculation
+    if (track.name === 'Hey Nineteen' || track.name === "Don't Stop Believin'" || track.artist === 'Journey') {
+      console.log(`📊 Score Debug for "${track.name}":`);
+      console.log(`   Before penalty: tempo=${tempoScore.toFixed(2)}, spectral=${spectralScore.toFixed(2)}, energy=${energyScore.toFixed(2)}, key=${keyScore.toFixed(2)}`);
+    }
     
-    return { tempo: tempoScore, key: keyScore, energy: energyScore, spectral: spectralScore, overall };
+    // Apply genre penalty to all scores
+    tempoScore *= genrePenalty;
+    keyScore *= genrePenalty;
+    energyScore *= genrePenalty;
+    spectralScore *= genrePenalty;
+    
+    // Debug logging after penalty
+    if (track.name === 'Hey Nineteen' || track.name === "Don't Stop Believin'" || track.artist === 'Journey') {
+      console.log(`   After penalty: tempo=${tempoScore.toFixed(2)}, spectral=${spectralScore.toFixed(2)}, energy=${energyScore.toFixed(2)}, key=${keyScore.toFixed(2)}`);
+    }
+    
+    // Calculate overall score - require multiple good matches
+    const scoreWeights = { tempo: 0.35, spectral: 0.35, energy: 0.2, key: 0.1 };
+    const overall = (
+      tempoScore * scoreWeights.tempo +
+      spectralScore * scoreWeights.spectral +
+      energyScore * scoreWeights.energy +
+      keyScore * scoreWeights.key
+    );
+    
+    // Debug final score
+    if (track.name === 'Hey Nineteen' || track.name === "Don't Stop Believin'" || track.artist === 'Journey') {
+      console.log(`   Overall score: ${overall.toFixed(3)}, Final: ${overall > 0.25 ? overall.toFixed(3) : '0'}`);
+    }
+    
+    // Only return non-zero if it's actually a decent match
+    const finalOverall = overall > 0.25 ? overall : 0;
+    
+    return { 
+      tempo: tempoScore, 
+      key: keyScore, 
+      energy: energyScore, 
+      spectral: spectralScore, 
+      overall: finalOverall
+    };
   }
 
   /**
@@ -327,26 +435,151 @@ export class AITrackIdentifier {
   }
 
   /**
+   * Detect genre from audio characteristics
+   */
+  private detectGenreFromAudio(audioMetrics: AdvancedMetrics): string {
+    const brightness = audioMetrics.spectralCentroid / 22050;
+    const bandwidth = audioMetrics.spectralBandwidth / 4000;
+    const rolloff = audioMetrics.spectralRolloff / 22050;
+    
+    // Electronic/Dance music characteristics
+    if (brightness > 0.6 && bandwidth > 0.5 && rolloff > 0.7) {
+      return 'electronic';
+    }
+    // Rock/Metal characteristics  
+    else if (bandwidth > 0.7 && rolloff > 0.6) {
+      return 'rock';
+    }
+    // Classical/Ambient characteristics
+    else if (brightness < 0.4 && bandwidth < 0.4) {
+      return 'classical';
+    }
+    // Hip-hop/Rap characteristics
+    else if (bandwidth > 0.6 && brightness < 0.5) {
+      return 'hip-hop';
+    }
+    
+    return 'unknown';
+  }
+
+  /**
+   * Check if detected genre is compatible with track genre
+   */
+  private checkGenreCompatibility(detectedGenre: string, trackGenre?: string): boolean {
+    if (!trackGenre) return true; // No genre info, allow it
+    if (detectedGenre === 'unknown') return true; // Can't detect, be neutral
+    
+    const detected = detectedGenre.toLowerCase();
+    const track = trackGenre.toLowerCase();
+    
+    // Electronic music family - be very inclusive
+    const electronicGenres = ['electronic', 'house', 'techno', 'dance', 'edm', 'trance', 'dubstep', 'drum', 'bass', 'disco', 'funk', 'electro'];
+    const isDetectedElectronic = detected === 'electronic';
+    const isTrackElectronic = electronicGenres.some(genre => track.includes(genre));
+    
+    // If we detect electronic music, ONLY allow electronic tracks
+    if (isDetectedElectronic) {
+      return isTrackElectronic;
+    }
+    
+    // Rock music family  
+    const rockGenres = ['rock', 'metal', 'punk', 'alternative', 'indie', 'grunge', 'classic', 'pop'];
+    const isDetectedRock = detected === 'rock';
+    const isTrackRock = rockGenres.some(genre => track.includes(genre));
+    
+    if (isDetectedRock && isTrackRock) return true;
+    
+    // For other genres, be more permissive
+    if (detected === 'hip-hop') {
+      return track.includes('hip') || track.includes('rap') || track.includes('r&b');
+    }
+    
+    if (detected === 'classical') {
+      return track.includes('classical') || track.includes('ambient') || track.includes('instrumental');
+    }
+    
+    // Default to incompatible for unmatched cases
+    return false;
+  }
+
+  /**
+   * Estimate BPM from audio analysis and MIDI data
+   */
+  private estimateBPMFromAudio(audioMetrics: AdvancedMetrics, midiData?: any): number {
+    // Prefer MIDI BPM if available
+    if (midiData?.bpm && midiData.bpm > 0) {
+      return midiData.bpm;
+    }
+    
+    // Estimate from zero crossing rate and spectral features
+    // This is a rough estimation - real BPM detection would need more sophisticated analysis
+    const zcr = audioMetrics.zeroCrossingRate;
+    const brightness = audioMetrics.spectralCentroid / 22050;
+    
+    // Rough BPM estimation based on audio characteristics
+    let estimatedBPM = 120; // Default
+    
+    // High zero crossing rate suggests faster tempo
+    if (zcr > 0.3) estimatedBPM += 20;
+    if (zcr > 0.5) estimatedBPM += 20;
+    
+    // Brightness can indicate genre which correlates with typical BPM ranges
+    if (brightness > 0.6) {
+      // Electronic music tends to be 120-140 BPM
+      estimatedBPM = 128;
+    } else if (brightness < 0.4) {
+      // Slower, more organic music
+      estimatedBPM = 100;
+    }
+    
+    return estimatedBPM;
+  }
+
+  /**
    * Calculate spectral matching score based on genre characteristics
    */
   private calculateSpectralMatchScore(audioMetrics: AdvancedMetrics, track: Track): number {
-    if (!track.genre) return 0.5;
+    if (!track.genre) return 0;
     
     const genre = track.genre.toLowerCase();
-    let score = 0.5;
+    let score = 0;
     
     const brightness = audioMetrics.spectralCentroid / 22050;
     const bandwidth = audioMetrics.spectralBandwidth / 4000;
+    const rolloff = audioMetrics.spectralRolloff / 22050;
     
-    if (genre.includes('electronic') || genre.includes('house') || genre.includes('techno')) {
-      score += brightness * 0.3;
-    } else if (genre.includes('rock') || genre.includes('metal')) {
-      score += bandwidth * 0.4;
-    } else if (genre.includes('ambient') || genre.includes('classical')) {
-      score += (1 - Math.abs(brightness - 0.5)) * 0.3;
+    // Electronic/Dance music - high brightness and rolloff
+    if (genre.includes('electronic') || genre.includes('house') || genre.includes('techno') || genre.includes('dance')) {
+      if (brightness > 0.6 && rolloff > 0.7) score = 0.9;
+      else if (brightness > 0.5 && rolloff > 0.6) score = 0.7;
+      else if (brightness > 0.4) score = 0.4;
+      else score = 0.1;
+    }
+    // Rock/Metal - high bandwidth  
+    else if (genre.includes('rock') || genre.includes('metal')) {
+      if (bandwidth > 0.7) score = 0.9;
+      else if (bandwidth > 0.5) score = 0.7;
+      else if (bandwidth > 0.3) score = 0.4;
+      else score = 0.1;
+    }
+    // Classical/Ambient - lower brightness and bandwidth
+    else if (genre.includes('classical') || genre.includes('ambient')) {
+      if (brightness < 0.4 && bandwidth < 0.4) score = 0.9;
+      else if (brightness < 0.6 && bandwidth < 0.6) score = 0.6;
+      else score = 0.3;
+    }
+    // Hip-hop/Rap - moderate brightness, higher bandwidth
+    else if (genre.includes('hip') || genre.includes('rap')) {
+      if (brightness > 0.3 && brightness < 0.6 && bandwidth > 0.5) score = 0.8;
+      else if (bandwidth > 0.4) score = 0.5;
+      else score = 0.2;
+    }
+    // Default for other genres
+    else {
+      score = 0.3;
     }
     
-    return Math.min(1, score);
+    return score;
   }
 
   /**
@@ -395,14 +628,23 @@ export class AITrackIdentifier {
     
     const bestMatch = matches[0];
     
+    console.log(`🎯 Best match: "${bestMatch.track.name}" by ${bestMatch.track.artist} with ${(bestMatch.confidence * 100).toFixed(1)}% confidence`);
+    
     if (this.currentMatch) {
       if (this.currentMatch.track.id === bestMatch.track.id) {
-        this.currentMatch.confidence = Math.min(0.98, this.currentMatch.confidence * 1.1);
-      } else if (bestMatch.confidence > this.currentMatch.confidence + 0.2) {
+        // Same track - increase confidence gradually
+        this.currentMatch.confidence = Math.min(0.98, this.currentMatch.confidence * 1.05);
+        console.log(`✅ Confidence boost for "${this.currentMatch.track.name}": ${(this.currentMatch.confidence * 100).toFixed(1)}%`);
+      } else if (bestMatch.confidence > this.currentMatch.confidence + 0.1) {
+        // New track is significantly better
         this.currentMatch = bestMatch;
+        console.log(`🔄 Switched to new track: "${bestMatch.track.name}"`);
       }
-    } else if (bestMatch.confidence > 0.3) { // Lower threshold for better testing
+    } else if (bestMatch.confidence > 0.5) { // Higher threshold for accepting matches
       this.currentMatch = bestMatch;
+      console.log(`🆕 New track identified: "${bestMatch.track.name}" with ${(bestMatch.confidence * 100).toFixed(1)}% confidence`);
+    } else {
+      console.log(`❌ Best match "${bestMatch.track.name}" below threshold (${(bestMatch.confidence * 100).toFixed(1)}% < 50%)`);
     }
   }
 

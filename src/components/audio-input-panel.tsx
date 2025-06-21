@@ -49,8 +49,8 @@ export default function AudioInputPanel({ audioInput }: AudioInputPanelProps) {
   return (
     <div style={{
       position: 'absolute',
-      top: '20px',
-      left: '20px',
+      bottom: '20px',
+      right: '20px',
       background: 'rgba(0, 0, 0, 0.9)',
       color: 'white',
       padding: '20px',
@@ -60,7 +60,7 @@ export default function AudioInputPanel({ audioInput }: AudioInputPanelProps) {
       minWidth: '300px',
       maxWidth: '320px',
       border: '2px solid #333',
-      zIndex: 999 // Lower than track identification panel
+      zIndex: 998 // Lower than track identification panel but visible
     }}>
       <div style={{
         display: 'flex',
@@ -135,22 +135,25 @@ export default function AudioInputPanel({ audioInput }: AudioInputPanelProps) {
           marginBottom: '8px'
         }}>
           <span>Input Gain:</span>
-          <span style={{ color: '#00d2d3' }}>{inputGain.toFixed(1)}x</span>
+          <span style={{ color: '#00d2d3', fontWeight: 'bold' }}>{inputGain.toFixed(1)}x</span>
         </div>
         <input
           type="range"
-          min="0.5"
-          max="10"
-          step="0.5"
+          min="0.1"
+          max="20"
+          step="0.1"
           value={inputGain}
           onChange={(e) => setInputGain(parseFloat(e.target.value))}
           style={{
             width: '100%',
-            height: '6px',
-            borderRadius: '3px',
-            background: '#2c2c2c',
+            height: '12px',
+            borderRadius: '6px',
+            background: `linear-gradient(to right, #00d2d3 0%, #00d2d3 ${(inputGain / 20) * 100}%, #2c2c2c ${(inputGain / 20) * 100}%, #2c2c2c 100%)`,
             outline: 'none',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            WebkitAppearance: 'none',
+            appearance: 'none',
+            border: '2px solid #444'
           }}
         />
         <div style={{ 
@@ -160,8 +163,30 @@ export default function AudioInputPanel({ audioInput }: AudioInputPanelProps) {
           color: '#999',
           marginTop: '2px'
         }}>
-          <span>0.5x</span>
-          <span>10x</span>
+          <span>0.1x</span>
+          <span>20x</span>
+        </div>
+        {/* Manual input field */}
+        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <span style={{ fontSize: '11px', color: '#999' }}>Manual:</span>
+          <input
+            type="number"
+            min="0.1"
+            max="20"
+            step="0.1"
+            value={inputGain}
+            onChange={(e) => setInputGain(Math.max(0.1, Math.min(20, parseFloat(e.target.value) || 0.1)))}
+            style={{
+              width: '60px',
+              padding: '2px 4px',
+              borderRadius: '4px',
+              border: '1px solid #444',
+              backgroundColor: '#333',
+              color: 'white',
+              fontSize: '11px'
+            }}
+          />
+          <span style={{ fontSize: '11px', color: '#999' }}>x</span>
         </div>
       </div>
 
@@ -173,22 +198,25 @@ export default function AudioInputPanel({ audioInput }: AudioInputPanelProps) {
           marginBottom: '8px'
         }}>
           <span>Sensitivity:</span>
-          <span style={{ color: '#00d2d3' }}>{sensitivity.toFixed(1)}x</span>
+          <span style={{ color: '#00d2d3', fontWeight: 'bold' }}>{sensitivity.toFixed(1)}x</span>
         </div>
         <input
           type="range"
-          min="0.5"
-          max="5"
+          min="0.1"
+          max="10"
           step="0.1"
           value={sensitivity}
           onChange={(e) => setSensitivity(parseFloat(e.target.value))}
           style={{
             width: '100%',
-            height: '6px',
-            borderRadius: '3px',
-            background: '#2c2c2c',
+            height: '12px',
+            borderRadius: '6px',
+            background: `linear-gradient(to right, #ffa502 0%, #ffa502 ${(sensitivity / 10) * 100}%, #2c2c2c ${(sensitivity / 10) * 100}%, #2c2c2c 100%)`,
             outline: 'none',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            WebkitAppearance: 'none',
+            appearance: 'none',
+            border: '2px solid #444'
           }}
         />
         <div style={{ 
@@ -198,8 +226,30 @@ export default function AudioInputPanel({ audioInput }: AudioInputPanelProps) {
           color: '#999',
           marginTop: '2px'
         }}>
-          <span>0.5x</span>
-          <span>5x</span>
+          <span>0.1x</span>
+          <span>10x</span>
+        </div>
+        {/* Manual input field */}
+        <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <span style={{ fontSize: '11px', color: '#999' }}>Manual:</span>
+          <input
+            type="number"
+            min="0.1"
+            max="10"
+            step="0.1"
+            value={sensitivity}
+            onChange={(e) => setSensitivity(Math.max(0.1, Math.min(10, parseFloat(e.target.value) || 0.1)))}
+            style={{
+              width: '60px',
+              padding: '2px 4px',
+              borderRadius: '4px',
+              border: '1px solid #444',
+              backgroundColor: '#333',
+              color: 'white',
+              fontSize: '11px'
+            }}
+          />
+          <span style={{ fontSize: '11px', color: '#999' }}>x</span>
         </div>
       </div>
 
