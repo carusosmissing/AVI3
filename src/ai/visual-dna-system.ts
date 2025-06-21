@@ -1249,10 +1249,18 @@ export class VisualDNASystem {
     this.manualMode = true;
     this.manualModeTimeout = performance.now() + this.MANUAL_MODE_DURATION;
     
-    // Initiate transition to selected profile
+    console.log(`🎨 Manual profile selection: ${profile.name} (was: ${this.activeState.currentProfile.name})`);
+    
+    // For manual selection, make the change more immediate
     if (profile.id !== this.activeState.currentProfile.id) {
-      this.initiateProfileTransition(profile);
-      console.log(`🎨 Manually switching to ${profile.name}`);
+      // Skip gradual transition for manual selection - make it immediate
+      this.activeState.currentProfile = profile;
+      this.activeState.targetProfile = null;
+      this.activeState.interpolationProgress = 0;
+      this.activeState.colorTransitions.clear();
+      this.activeState.complexityTransitions.clear();
+      
+      console.log(`🎨 Immediately switched to ${profile.name} in manual mode`);
     }
     
     return true;

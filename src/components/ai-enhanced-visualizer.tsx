@@ -171,6 +171,8 @@ function GeometricShape({
     const complexity = profile.complexity;
     const reactivity = profile.reactivity;
     
+    // Removed excessive debug logging
+    
     // Apply rotation based on profile behaviors
     const rotateBehavior = profile.visualElements.behaviors.find(b => b.name === 'rotate');
     if (rotateBehavior) {
@@ -251,16 +253,39 @@ function GeometricShape({
 function ParticleSystem({ visualState, audioLevel }: { visualState: ActiveVisualState; audioLevel: number }) {
   const particlesRef = useRef<THREE.Points>(null);
   const particleCount = Math.min(visualState.currentProfile.complexity.particleCount, 5000); // Cap particle count
+  const [currentProfileId, setCurrentProfileId] = useState(visualState.currentProfile.id);
 
   // Create particle geometry
   const particles = React.useMemo(() => {
+    // Creating particles for profile: ${visualState.currentProfile.id}
+    
     const positions = new Float32Array(particleCount * 3);
     const colors = new Float32Array(particleCount * 3);
     
+    // Generate particle positions based on profile type
+    const profileType = visualState.currentProfile.visualElements.type;
+    const profileDimension = visualState.currentProfile.visualElements.dimension;
+    
     for (let i = 0; i < particleCount; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 20;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 20;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 20;
+      // Position particles differently based on profile
+      if (profileType === 'geometric') {
+        // More structured positioning for geometric profiles
+        positions[i * 3] = (Math.random() - 0.5) * 15;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 15;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 15;
+      } else if (profileType === 'organic') {
+        // More organic, flowing positioning
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * 10;
+        positions[i * 3] = Math.cos(angle) * radius;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 20;
+        positions[i * 3 + 2] = Math.sin(angle) * radius;
+      } else {
+        // Hybrid - mix of both
+        positions[i * 3] = (Math.random() - 0.5) * 20;
+        positions[i * 3 + 1] = (Math.random() - 0.5) * 20;
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 20;
+      }
       
       const color = new THREE.Color(
         visualState.currentProfile.colorPalette.highlights[
@@ -276,8 +301,9 @@ function ParticleSystem({ visualState, audioLevel }: { visualState: ActiveVisual
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     
+    setCurrentProfileId(visualState.currentProfile.id);
     return geometry;
-  }, [particleCount, visualState.currentProfile.colorPalette]);
+  }, [particleCount, visualState.currentProfile.id, visualState.currentProfile.colorPalette, visualState.currentProfile.visualElements]);
   
   // Store initial positions
   const initialPositions = React.useRef<Float32Array | null>(null);
@@ -317,14 +343,23 @@ function ParticleSystem({ visualState, audioLevel }: { visualState: ActiveVisual
     particlesRef.current.rotation.y = time * complexity.movementSpeed * 0.1;
   });
 
+  // Calculate material properties based on profile
+  const profile = visualState.currentProfile;
+  const materialSize = profile.complexity.geometryDetail * 0.15; // Size based on detail level
+  const materialOpacity = 0.4 + (audioLevel * 0.4) + (profile.complexity.effectIntensity * 0.2);
+  
+  // Use additive blending for all profiles for now (to avoid type issues)
+  const blendingMode = THREE.AdditiveBlending;
+
   return (
     <points ref={particlesRef} geometry={particles}>
       <pointsMaterial
-        size={0.1}
+        key={`${profile.id}-material`} // Force material recreation on profile change
+        size={materialSize}
         vertexColors
         transparent
-        opacity={0.6 + (audioLevel * 0.2)}
-        blending={THREE.AdditiveBlending}
+        opacity={Math.min(1, materialOpacity)}
+        blending={blendingMode}
       />
     </points>
   );
@@ -463,7 +498,20 @@ export default function AIEnhancedVisualizer({
       }
       
       const newState = visualDNA.update(performance.now());
-      setVisualState(newState);
+      
+      // Check if profile has changed
+      if (newState.currentProfile.id !== visualState.currentProfile.id) {
+        console.log('🧬 Profile changed from', visualState.currentProfile.id, 'to', newState.currentProfile.id);
+      }
+      
+      // Force state update by creating a new object reference
+      // This ensures React properly detects the change and re-renders components
+      setVisualState({
+        ...newState,
+        currentProfile: { ...newState.currentProfile },
+        targetProfile: newState.targetProfile ? { ...newState.targetProfile } : null
+      });
+      
       animationFrameRef.current = requestAnimationFrame(animate);
     };
     
@@ -544,7 +592,10 @@ export default function AIEnhancedVisualizer({
   return (
     <div className="ai-enhanced-visualizer" style={{ width: '100%', height: '100%' }}>
       <Canvas camera={{ position: [0, 0, 10], fov: 75 }}>
-        <DynamicBackground visualState={visualState} />
+        <DynamicBackground 
+          key={`${visualState.currentProfile.id}-background`}
+          visualState={visualState} 
+        />
         
         <ambientLight intensity={0.4} />
         <pointLight position={[10, 10, 10]} intensity={1} color={visualState.currentProfile.colorPalette.primary} />
@@ -570,7 +621,7 @@ export default function AIEnhancedVisualizer({
         {visualState.currentProfile.visualElements.dimension !== '2D' && 
           Array.from({ length: 5 }, (_, i) => (
             <GeometricShape 
-              key={i} 
+              key={`${visualState.currentProfile.id}-shape-${i}`} 
               visualState={visualState} 
               audioLevel={audioLevel} 
               index={i}
@@ -579,7 +630,11 @@ export default function AIEnhancedVisualizer({
         }
         
         {/* Particle system */}
-        <ParticleSystem visualState={visualState} audioLevel={audioLevel} />
+        <ParticleSystem 
+          key={`${visualState.currentProfile.id}-particles`}
+          visualState={visualState} 
+          audioLevel={audioLevel} 
+        />
         
         {/* Post-processing effects - temporarily disabled due to compatibility issues */}
         {/* <EffectComposer>
