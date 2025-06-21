@@ -3,9 +3,10 @@ import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { EffectComposer, Bloom, Noise } from '@react-three/postprocessing';
 import { BlendFunction, GlitchMode } from 'postprocessing';
+import { Box } from '@react-three/drei';
 import { VisualDNASystem, ActiveVisualState } from '../ai/visual-dna-system';
 import { RealTimeAudioAnalyzer } from '../ai/audio-analyzer';
-import { AIEnhancedControllerState } from '../types';
+import { AIEnhancedControllerState, DDJControllerState, VisualParams } from '../types';
 import { VisualDNAProfileSelector } from './visual-dna-profile-selector';
 
 interface VisualDNAVisualizerProps {
@@ -17,6 +18,145 @@ interface VisualDNAVisualizerProps {
     bandwidth: number;
     rolloff: number;
   };
+}
+
+// Main reactive cube that responds to crossfader, EQ, AND BPM - copied from basic visualizer
+interface MainCubeProps {
+  controllerState: DDJControllerState;
+  visualParams: VisualParams;
+  bpmData: {
+    currentBPM: number;
+    isConnected: boolean;
+    beatPhase: number;
+    beatInterval: number;
+  };
+}
+
+function MainCube({ controllerState, visualParams, bpmData }: MainCubeProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const [hovered, setHovered] = useState(false);
+  
+  // Enhanced smoothed values with momentum and physics
+  const smoothedValuesRef = useRef({
+    volumeA: 127, // Start at max
+    volumeB: 127, // Start at max
+    scale: 1,
+    scaleVelocity: 0,
+    rotation: { x: 0, y: 0 },
+    rotationVelocity: { x: 0, y: 0 },
+    color: { h: 0, s: 0.8, l: 0.5 },
+    colorVelocity: { h: 0, s: 0, l: 0 },
+    emissive: 0,
+    emissiveVelocity: 0,
+    lastUpdateTime: 0
+  });
+
+  useFrame((state, delta) => {
+    if (!meshRef.current) return;
+
+    const currentTime = performance.now();
+    const frameTime = Math.min(delta, 1/30); // Cap to 30fps equivalent for stability
+    
+    // Enhanced volume smoothing with different rates for rise/fall
+    const volumeRiseRate = 0.15;  // Faster response to increases
+    const volumeFallRate = 0.08;  // Slower decay for smoother feel
+    
+    const volumeADiff = controllerState.channelA.volume - smoothedValuesRef.current.volumeA;
+    const volumeBDiff = controllerState.channelB.volume - smoothedValuesRef.current.volumeB;
+    
+    const volumeARate = volumeADiff > 0 ? volumeRiseRate : volumeFallRate;
+    const volumeBRate = volumeBDiff > 0 ? volumeRiseRate : volumeFallRate;
+    
+    smoothedValuesRef.current.volumeA += volumeADiff * volumeARate;
+    smoothedValuesRef.current.volumeB += volumeBDiff * volumeBRate;
+    
+    // Separate volume-based scaling from BPM pulse
+    const scaleA = smoothedValuesRef.current.volumeA / 127;
+    const scaleB = smoothedValuesRef.current.volumeB / 127;
+    const controllerScale = (scaleA + scaleB) / 2;
+    
+    // Volume-based target scale (smooth scaling based on volume only)
+    const targetScale = 0.5 + controllerScale * 1.5;
+    
+    // Physics-based scale animation with spring-damper system
+    const scaleSpring = 8.0; // Slightly slower for smoother volume response
+    const scaleDamping = 0.8;  // More damping for smoother feel
+    
+    const scaleForce = (targetScale - smoothedValuesRef.current.scale) * scaleSpring;
+    smoothedValuesRef.current.scaleVelocity += scaleForce * frameTime;
+    smoothedValuesRef.current.scaleVelocity *= Math.pow(scaleDamping, frameTime);
+    smoothedValuesRef.current.scale += smoothedValuesRef.current.scaleVelocity * frameTime;
+    
+    // Apply base scale from volume
+    meshRef.current.scale.setScalar(smoothedValuesRef.current.scale);
+    
+    // BPM pulse effect applied as subtle scale modulation
+    const beatPulse = 1 + Math.sin(bpmData.beatPhase * Math.PI * 2) * 0.15; // Reduced intensity
+    meshRef.current.scale.multiplyScalar(beatPulse);
+
+    // Smooth rotation with momentum
+    const crossfaderNorm = controllerState.crossfader / 127;
+    const targetRotationX = crossfaderNorm * frameTime * 2;
+    const targetRotationY = (1 - crossfaderNorm) * frameTime * 2;
+    
+    // Add rotation with inertia
+    smoothedValuesRef.current.rotationVelocity.x += (targetRotationX - smoothedValuesRef.current.rotationVelocity.x) * 0.1;
+    smoothedValuesRef.current.rotationVelocity.y += (targetRotationY - smoothedValuesRef.current.rotationVelocity.y) * 0.1;
+    
+    meshRef.current.rotation.x += smoothedValuesRef.current.rotationVelocity.x;
+    meshRef.current.rotation.y += smoothedValuesRef.current.rotationVelocity.y;
+
+    // Smooth color transitions
+    const material = meshRef.current.material as THREE.MeshStandardMaterial;
+    
+    // Target color values
+    const targetHue = ((controllerState.channelA.eq.high / 127) * 0.3 + (controllerState.channelB.eq.high / 127) * 0.7 + (bpmData.currentBPM - 60) / 140 * 0.2) % 1;
+    const targetSaturation = Math.min(1, (controllerState.channelA.eq.mid + controllerState.channelB.eq.mid) / 254);
+    const targetLightness = Math.min(1, 0.3 + (controllerState.channelA.eq.low + controllerState.channelB.eq.low) / 508);
+    
+    // Smooth color changes with momentum
+    const colorSmoothing = 0.08;
+    smoothedValuesRef.current.color.h += (targetHue - smoothedValuesRef.current.color.h) * colorSmoothing;
+    smoothedValuesRef.current.color.s += (targetSaturation - smoothedValuesRef.current.color.s) * colorSmoothing;
+    smoothedValuesRef.current.color.l += (targetLightness - smoothedValuesRef.current.color.l) * colorSmoothing;
+    
+    material.color.setHSL(
+      smoothedValuesRef.current.color.h, 
+      smoothedValuesRef.current.color.s, 
+      smoothedValuesRef.current.color.l
+    );
+
+    // Smooth emissive glow with anticipation
+    const rawBeatGlow = Math.pow(1 - bpmData.beatPhase, 3) * 0.3;
+    const targetEmissive = rawBeatGlow;
+    
+    // Physics-based emissive with quick attack, slow decay
+    const emissiveAttack = 0.25;
+    const emissiveDecay = 0.15;
+    const emissiveRate = targetEmissive > smoothedValuesRef.current.emissive ? emissiveAttack : emissiveDecay;
+    
+    smoothedValuesRef.current.emissive += (targetEmissive - smoothedValuesRef.current.emissive) * emissiveRate;
+    material.emissive.setScalar(smoothedValuesRef.current.emissive);
+    
+    smoothedValuesRef.current.lastUpdateTime = currentTime;
+  });
+
+  return (
+    <Box
+      ref={meshRef}
+      args={[2, 2, 2]}
+      position={[0, 0, 0]}
+      onPointerOver={() => setHovered(true)}
+      onPointerOut={() => setHovered(false)}
+    >
+      <meshStandardMaterial 
+        color={hovered ? "#ff6b6b" : "#4ecdc4"}
+        wireframe={false}
+        metalness={0.6}
+        roughness={0.2}
+      />
+    </Box>
+  );
 }
 
 // Geometric shape component that responds to Visual DNA
@@ -315,6 +455,29 @@ export const VisualDNAVisualizer: React.FC<VisualDNAVisualizerProps> = ({
     return effects;
   };
   
+  // Create dynamic BPM data for the MainCube
+  const [beatPhase, setBeatPhase] = useState(0);
+  
+  useEffect(() => {
+    const bpm = 120; // Default BPM
+    const interval = setInterval(() => {
+      setBeatPhase(prev => (prev + 0.05) % 1); // Update beat phase over time
+    }, (60000 / bpm) / 20); // 20 updates per beat
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  const mockBPMData = React.useMemo(() => ({
+    currentBPM: 120, // Default BPM
+    isConnected: true,
+    beatPhase: beatPhase,
+    beatInterval: 60000 / 120 // 120 BPM interval
+  }), [beatPhase]);
+
+  const mockVisualParams = React.useMemo(() => ({
+    // Add any required visual params here
+  }), []);
+
   return (
     <div className="visual-dna-visualizer" style={{ width: '100%', height: '100%' }}>
       <Canvas camera={{ position: [0, 0, 10], fov: 75 }}>
@@ -330,6 +493,15 @@ export const VisualDNAVisualizer: React.FC<VisualDNAVisualizerProps> = ({
           intensity={audioLevel} 
           color={visualState.currentProfile.colorPalette.highlights[0] || '#ffffff'}
         />
+        
+        {/* Main Cube in the center */}
+        {controllerState.channelA && controllerState.channelB && (
+          <MainCube 
+            controllerState={controllerState as DDJControllerState}
+            visualParams={mockVisualParams as VisualParams}
+            bpmData={mockBPMData}
+          />
+        )}
         
         {/* Render shapes based on profile */}
         {visualState.currentProfile.visualElements.dimension !== '2D' && 
