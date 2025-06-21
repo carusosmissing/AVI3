@@ -8,6 +8,7 @@ import { VisualDNASystem, ActiveVisualState } from '../ai/visual-dna-system';
 import { RealTimeAudioAnalyzer } from '../ai/audio-analyzer';
 import { AIEnhancedControllerState, DDJControllerState, VisualParams } from '../types';
 import { VisualDNAProfileSelector } from './visual-dna-profile-selector';
+import { EnhancedParticleSystem } from './enhanced-particle-system';
 
 interface VisualDNAVisualizerProps {
   analyzer: RealTimeAudioAnalyzer;
@@ -141,19 +142,33 @@ function MainCube({ controllerState, visualParams, bpmData }: MainCubeProps) {
     smoothedValuesRef.current.lastUpdateTime = currentTime;
   });
 
+    // Load the logo texture
+  const logoTexture = React.useMemo(() => {
+    const loader = new THREE.TextureLoader();
+    const texture = loader.load('/wicked-craniums-logo-2048.png');
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    return texture;
+  }, []);
+
   return (
     <Box
       ref={meshRef}
       args={[2, 2, 2]}
-      position={[0, 0, 0]}
+      position={[0, 0, -45]}
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}
     >
       <meshStandardMaterial 
-        color={hovered ? "#ff6b6b" : "#4ecdc4"}
+        map={logoTexture}
+        color={hovered ? "#ff6b6b" : "#ffffff"}
         wireframe={false}
-        metalness={0.6}
-        roughness={0.2}
+        metalness={0.3}
+        roughness={0.4}
+        transparent={true}
+        opacity={0.9}
       />
     </Box>
   );
@@ -240,16 +255,30 @@ function GeometricShape({
     }
   };
   
+  // Load logo texture for geometric shapes
+  const logoTexture = React.useMemo(() => {
+    const loader = new THREE.TextureLoader();
+    const texture = loader.load('/wicked-craniums-logo-2048.png');
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    return texture;
+  }, []);
+
   return (
     <mesh ref={meshRef} position={[index * 2 - 5, 0, -5]}>
       {getGeometry()}
       <meshStandardMaterial 
+        map={logoTexture}
         color={visualState.currentProfile.colorPalette.primary}
         wireframe={visualState.currentProfile.visualElements.type === 'geometric'}
         emissive={visualState.currentProfile.colorPalette.accent}
         emissiveIntensity={0.2 + (audioLevel * 0.3)}
         metalness={0.3}
         roughness={0.4}
+        transparent={true}
+        opacity={0.9}
       />
     </mesh>
   );
@@ -515,8 +544,35 @@ export const VisualDNAVisualizer: React.FC<VisualDNAVisualizerProps> = ({
           ))
         }
         
-        {/* Particle system */}
-        <ParticleSystem visualState={visualState} audioLevel={audioLevel} />
+        {/* Enhanced Particle system */}
+        <EnhancedParticleSystem 
+          audioData={{
+            audioLevel: audioLevel,
+            spectralFeatures: spectralFeatures ? {
+              bass: ((controllerState.channelA?.eq?.low || 0) + (controllerState.channelB?.eq?.low || 0)) / 254,
+              mid: ((controllerState.channelA?.eq?.mid || 0) + (controllerState.channelB?.eq?.mid || 0)) / 254,
+              high: ((controllerState.channelA?.eq?.high || 0) + (controllerState.channelB?.eq?.high || 0)) / 254,
+              brightness: spectralFeatures.brightness,
+              bandwidth: spectralFeatures.bandwidth
+            } : undefined,
+            beatDetection: {
+              isBeat: Math.sin(beatPhase * Math.PI * 2) > 0.8,
+              beatStrength: audioLevel * 0.8,
+              beatPhase: beatPhase
+            }
+          }}
+          visualDNAProfile={{
+            id: visualState.currentProfile.id,
+            name: visualState.currentProfile.name,
+            visualElements: visualState.currentProfile.visualElements,
+            complexity: visualState.currentProfile.complexity,
+            moodTags: visualState.currentProfile.moodTags,
+            genreAffinity: visualState.currentProfile.genreAffinity,
+            reactivity: visualState.currentProfile.reactivity
+          }}
+          maxParticles={Math.min(visualState.currentProfile.complexity.particleCount, 2000)}
+          enableLOD={true}
+        />
         
         {/* Post-processing effects - temporarily disabled due to compatibility issues */}
         {/* <EffectComposer>

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
-import VisualizerScene from './components/visualizer-scene';
 import AIEnhancedVisualizer from './components/ai-enhanced-visualizer';
-import TrackIdentificationPanel from './components/track-identification-panel';
+import ControlPanelScreen from './components/control-panel-screen';
 import useMIDIBPM from './hooks/useMIDIBPM';
+import useAIAudioAnalyzer from './hooks/useAIAudioAnalyzer';
 
 import { DDJFlx4Controller } from './controllers/ddj-flx4-controller';
 import { DDJControllerState, VisualParams, AppState, Track } from './types';
@@ -30,29 +30,28 @@ function App() {
   const [isControllerConnected, setIsControllerConnected] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
 
+  // Shared AI Audio Analyzer - this will maintain audio input state across components
+  const aiAnalysis = useAIAudioAnalyzer(ddjController, {
+    currentBPM,
+    isConnected: bpmConnected,
+    beatPhase,
+    beatInterval
+  });
 
   
-  // Visualizer mode - basic or AI
-  const [visualizerMode, setVisualizerMode] = useState<'basic' | 'ai'>('basic');
-  
-  // Visual DNA overlay toggle
+  // Visual DNA system toggle
   const [visualDNAEnabled, setVisualDNAEnabled] = useState(true);
   
-  // UI state
-  const [isControllerSectionCollapsed, setIsControllerSectionCollapsed] = useState(false);
-  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
+  // Navigation state - current screen
+  const [currentScreen, setCurrentScreen] = useState<'visualizer' | 'controls'>('visualizer');
+  
+  // UI state - removed old control panel variables since we now use dedicated control panel screen
   
   // Track identification state
   const [identificationTracks, setIdentificationTracks] = useState<Track[]>([]);
   const [identificationResult, setIdentificationResult] = useState<any>(null);
 
-  // Prepare BPM data for visualizer
-  const bpmData = {
-    currentBPM,
-    isConnected: bpmConnected,
-    beatPhase,
-    beatInterval
-  };
+
 
   /**
    * Handle tracks loaded from identification panel
@@ -321,268 +320,74 @@ function App() {
 
   return (
     <div className="App">
-      {/* Left Panel Toggle Button */}
-      <button
-        onClick={() => setIsLeftPanelOpen(!isLeftPanelOpen)}
-        style={{
-          position: 'fixed',
-          top: '20px',
-          left: isLeftPanelOpen ? '320px' : '20px',
-          zIndex: 1001,
-          background: 'rgba(0, 0, 0, 0.9)',
-          border: '2px solid #333',
-          color: 'white',
-          width: '40px',
-          height: '40px',
-          borderRadius: '50%',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '18px',
-          transition: 'all 0.3s ease',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.5)'
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = 'rgba(50, 50, 50, 0.9)';
-          e.currentTarget.style.transform = 'scale(1.1)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = 'rgba(0, 0, 0, 0.9)';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        {isLeftPanelOpen ? '◀' : '▶'}
-      </button>
-
-      {/* Control Panel */}
-      <div 
-        className="control-panel" 
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '300px',
-          height: '100vh',
-          background: 'linear-gradient(135deg, #1e3c72, #2a5298)',
-          color: 'white',
-          padding: '20px',
-          boxSizing: 'border-box',
-          overflowY: 'auto',
-          zIndex: 1000,
-          transform: isLeftPanelOpen ? 'translateX(0)' : 'translateX(-100%)',
-          transition: 'transform 0.3s ease',
-          boxShadow: isLeftPanelOpen ? '2px 0 10px rgba(0,0,0,0.3)' : 'none'
-        }}
-      >
-        <div className="control-section">
-          <h2>🎛️ DDJ-FLX4 Audio Visualizer</h2>
-          
-          {/* Connection Status */}
-          <div className={`connection-status ${isControllerConnected ? 'connected' : 'disconnected'}`}>
-            <div className="status-indicator">
-              {isControllerConnected ? '🟢' : '🔴'}
-            </div>
-            <span>
-              {isControllerConnected ? 'DDJ-FLX4 Connected' : 'DDJ-FLX4 Disconnected'}
-            </span>
-            {!isControllerConnected && (
-              <button onClick={retryConnection} className="retry-btn">
-                Retry Connection {connectionAttempts > 0 && `(${connectionAttempts})`}
-              </button>
-            )}
-          </div>
-
-          {/* Visualizer Mode Toggle */}
-          <div className="visualizer-toggle">
-            <div className="mode-selection">
-              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                <select
-                  value={visualizerMode}
-                  onChange={(e) => setVisualizerMode(e.target.value as 'basic' | 'ai')}
-                  style={{
-                    padding: '5px 10px',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    backgroundColor: '#2c3e50',
-                    color: 'white',
-                    border: '1px solid #34495e',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <option value="basic">🎵 Basic Visualizer</option>
-                  <option value="ai">🤖 AI-Enhanced</option>
-                </select>
-              </label>
-              
-              {/* Visual DNA Toggle */}
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '20px' }}>
-                <input
-                  type="checkbox"
-                  checked={visualDNAEnabled}
-                  onChange={(e) => setVisualDNAEnabled(e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                  🧬 Visual DNA {visualizerMode === 'basic' ? 'Overlay' : ''}
-                </span>
-              </label>
-            </div>
-            
-            <div className="mode-description">
-              {visualizerMode === 'ai' ? (
-                <>
-                  🧠 <strong>AI Mode:</strong> Predictive beats + learning + smart smoothing
-                  <div style={{ fontSize: '12px', color: '#a4b0be', marginTop: '8px' }}>
-                    • AI predicts next beats for seamless visual sync<br/>
-                    • Machine learning adapts to your mixing style<br/>
-                    • Smart smoothing prevents jarring changes<br/>
-                    • Genre detection influences visual behavior<br/>
-                    • Memory system learns from session patterns
-                  </div>
-                </>
-              ) : (
-                <>
-                  🎵🎛️ <strong>Basic Mode:</strong> Real-time beat detection + controller response
-                  <div style={{ fontSize: '12px', color: '#a4b0be', marginTop: '8px' }}>
-                    • EQ/Volume controls affect size and color<br/>
-                    • BPM detection adds beat-synced pulsing<br/>
-                    • Performance pads trigger particle effects<br/>
-                    • Manual BPM tapping: Notes 150, 99, 127
-                  </div>
-                </>
-              )}
-              
-              {/* Visual DNA Description when enabled */}
-              {visualDNAEnabled && (
-                <div style={{ 
-                  fontSize: '12px', 
-                  color: '#e74c3c', 
-                  marginTop: '8px',
-                  background: 'rgba(231, 76, 60, 0.1)',
-                  padding: '8px',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(231, 76, 60, 0.3)'
-                }}>
-                  🧬 <strong>Visual DNA {visualizerMode === 'basic' ? 'Overlay' : 'System'} Active:</strong>
-                  <div style={{ marginTop: '4px' }}>
-                    {visualizerMode === 'basic' ? (
-                      <>
-                        • Overlay mode: Semi-transparent layer over basic visualizer<br/>
-                        • MIDI-only: Reacts to controller movements<br/>
-                        • Simulated genre detection based on EQ settings
-                      </>
-                    ) : (
-                      <>
-                        • Full replacement: Visual DNA is the main visualizer<br/>
-                        • AI-powered: Real audio analysis & genre detection<br/>
-                        • 10 unique profiles with smooth transitions
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Audio Input Note */}
-          <div style={{ 
-            color: '#74b9ff', 
-            fontSize: '12px',
-            background: 'rgba(116, 185, 255, 0.1)',
-            padding: '10px 12px',
-            borderRadius: '6px',
-            border: '1px solid rgba(116, 185, 255, 0.3)',
-            lineHeight: '1.4',
-            marginBottom: '20px'
-          }}>
-            💡 <strong>Audio Input:</strong> Use the AI panel (top-right) to control audio input for enhanced AI-powered visualizations!
-          </div>
-
-
-
-          {/* Controller Status */}
-          <div className="controller-info">
-            <h3 onClick={() => setIsControllerSectionCollapsed(!isControllerSectionCollapsed)}>
-              Controller Status
-              <span className={`collapse-icon ${!isControllerSectionCollapsed ? 'expanded' : ''}`}>
-                ▼
-              </span>
-            </h3>
-            <div className={`controller-values ${isControllerSectionCollapsed ? 'collapsed' : ''}`}>
-              <div>Crossfader: {appState.controller.crossfader}</div>
-              <div>Channel A Volume: {appState.controller.channelA.volume}</div>
-              <div>Channel B Volume: {appState.controller.channelB.volume}</div>
-              <div>Channel A EQ High: {appState.controller.channelA.eq.high}</div>
-              <div>Channel A EQ Mid: {appState.controller.channelA.eq.mid}</div>
-              <div>Channel A EQ Low: {appState.controller.channelA.eq.low}</div>
-              <div>Channel B EQ High: {appState.controller.channelB.eq.high}</div>
-              <div>Channel B EQ Mid: {appState.controller.channelB.eq.mid}</div>
-              <div>Channel B EQ Low: {appState.controller.channelB.eq.low}</div>
-              <div>
-                Active Pads: {appState.controller.performancePads.pads.filter(p => p.isPressed).length}
-              </div>
-            </div>
-          </div>
-
-
-
-          {/* Track Identification Panel */}
-          <div className="track-identification-section">
-            <h3>🎯 AI Track Identification System</h3>
-            <div style={{ 
-              background: '#1a1a1a', 
-              borderRadius: '8px', 
-              padding: '15px',
-              border: '1px solid #333'
-            }}>
-              <TrackIdentificationPanel 
-                onTracksLoaded={handleTracksLoaded}
-                identificationResult={identificationResult}
-                isAIReady={true} // Assume AI is ready in this context
-              />
-            </div>
-          </div>
-
-          {/* Debug Info */}
-          <div className="debug-info">
-            <h3>Debug Info</h3>
-            <div className="debug-values">
-              <div>MIDI Enabled: {typeof window !== 'undefined' && 'navigator' in window && 'requestMIDIAccess' in navigator ? '✅' : '❌'}</div>
-              <div>Available Devices: {ddjController.getAvailableInputs().length}</div>
-              <div className="device-list">
-                {ddjController.getAvailableInputs().length > 0 ? (
-                  <details>
-                    <summary>Show Devices ({ddjController.getAvailableInputs().length})</summary>
-                    <ul>
-                      {ddjController.getAvailableInputs().map((device, index) => (
-                        <li key={index}>{device}</li>
-                      ))}
-                    </ul>
-                  </details>
-                ) : (
-                  <span>No MIDI devices found</span>
-                )}
-              </div>
-              <div className="debug-note">
-                <small>
-                  💡 <strong>Tip:</strong> Open browser DevTools (F12) → Console to see detailed MIDI event logs when you move controls
-                </small>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Navigation Bar */}
+      <div style={{
+        position: 'fixed',
+        top: '10px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 1002,
+        display: 'flex',
+        gap: '10px',
+        background: 'rgba(0, 0, 0, 0.9)',
+        padding: '10px 15px',
+        borderRadius: '25px',
+        border: '2px solid #333',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+      }}>
+        <button
+          onClick={() => setCurrentScreen('visualizer')}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: currentScreen === 'visualizer' ? '#2ed573' : 'transparent',
+            color: 'white',
+            border: currentScreen === 'visualizer' ? '2px solid #2ed573' : '2px solid #555',
+            borderRadius: '15px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            transition: 'all 0.3s ease'
+          }}
+        >
+          🎵 Visualizer
+        </button>
+        <button
+          onClick={() => setCurrentScreen('controls')}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: currentScreen === 'controls' ? '#ff6348' : 'transparent',
+            color: 'white',
+            border: currentScreen === 'controls' ? '2px solid #ff6348' : '2px solid #555',
+            borderRadius: '15px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            transition: 'all 0.3s ease'
+          }}
+        >
+          🎛️ Control Panel
+        </button>
       </div>
 
-      {/* Main Visualizer */}
-      <div style={{ 
-        marginLeft: isLeftPanelOpen ? '300px' : '0px',
-        transition: 'margin-left 0.3s ease',
-        width: isLeftPanelOpen ? 'calc(100% - 300px)' : '100%',
-        height: '100vh'
-      }}>
-        {visualizerMode === 'ai' ? (
+      {/* Render current screen */}
+      {currentScreen === 'controls' ? (
+        <ControlPanelScreen 
+          isControllerConnected={isControllerConnected}
+          connectionAttempts={connectionAttempts}
+          visualDNAEnabled={visualDNAEnabled}
+          appState={appState}
+          ddjController={ddjController}
+          identificationTracks={identificationTracks}
+          identificationResult={identificationResult}
+          onVisualDNAToggle={setVisualDNAEnabled}
+          onRetryConnection={retryConnection}
+          onTracksLoaded={handleTracksLoaded}
+          controller={ddjController}
+          aiAnalysis={aiAnalysis}
+        />
+      ) : (
+        // Clean visualizer screen - AI-enhanced mode only
+        <div style={{ width: '100%', height: '100vh' }}>
           <AIEnhancedVisualizer
             controller={ddjController}
             controllerState={appState.controller}
@@ -590,18 +395,16 @@ function App() {
             identificationTracks={identificationTracks}
             onTrackIdentification={handleTrackIdentification}
             visualDNAEnabled={visualDNAEnabled}
+            bpmData={{
+              currentBPM,
+              isConnected: bpmConnected,
+              beatPhase,
+              beatInterval
+            }}
+            aiAnalysis={aiAnalysis}
           />
-        ) : (
-          <VisualizerScene 
-            controllerState={appState.controller}
-            visualParams={appState.visualParams}
-            bpmData={bpmData}
-            visualDNAEnabled={visualDNAEnabled}
-          />
-        )}
-      </div>
-
-
+        </div>
+      )}
     </div>
   );
 }

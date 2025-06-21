@@ -412,7 +412,7 @@ export class VisualDNASystem {
     this.profiles.set('void-walker', {
       id: 'void-walker',
       name: 'Void Walker',
-      description: 'Dark minimal aesthetics with sharp contrasts for industrial sounds',
+      description: 'Dark minimal aesthetics with reflective pixels and holographic effects for industrial sounds',
       colorPalette: {
         primary: '#FF0000',
         secondary: '#000000',
@@ -429,8 +429,8 @@ export class VisualDNASystem {
         geometryDetail: 0.9,
         layerCount: 3,
         effectIntensity: 1.0,
-        movementSpeed: 1.5,
-        turbulence: 0.4
+        movementSpeed: 0.8,
+        turbulence: 0.9
       },
       transitionStyle: {
         type: 'shatter',
@@ -441,12 +441,13 @@ export class VisualDNASystem {
       visualElements: {
         type: 'geometric',
         dimension: '3D',
-        shapes: ['spike', 'shard', 'void', 'beam'],
-        textures: ['metal', 'rust', 'static', 'void'],
+        shapes: ['pyramid', 'tetrahedron', 'pyramid', 'tetrahedron'],
+        textures: ['metal', 'shadow', 'dark', 'void', 'pixel', 'holographic', 'reflective'],
         behaviors: [
-          { name: 'strobe', intensity: 0.9, frequency: 0.8 },
-          { name: 'implode', intensity: 0.7, frequency: 0.3 },
-          { name: 'corrupt', intensity: 0.8, frequency: 0.6 }
+          { name: 'rotate', intensity: 0.8, frequency: 0.4 },
+          { name: 'pulse', intensity: 0.6, frequency: 0.5 },
+          { name: 'shatter', intensity: 0.7, frequency: 0.3 },
+          { name: 'shimmer', intensity: 0.9, frequency: 0.8 }
         ]
       },
       energyMapping: {
@@ -1245,9 +1246,9 @@ export class VisualDNASystem {
       return false;
     }
 
-    // Enable manual mode
+    // Enable manual mode WITHOUT timeout when selecting a profile
     this.manualMode = true;
-    this.manualModeTimeout = performance.now() + this.MANUAL_MODE_DURATION;
+    this.manualModeTimeout = null; // Remove timeout - user controls this now
     
     console.log(`🎨 Manual profile selection: ${profile.name} (was: ${this.activeState.currentProfile.name})`);
     
@@ -1264,6 +1265,36 @@ export class VisualDNASystem {
     }
     
     return true;
+  }
+
+  /**
+   * Toggle between manual and automatic mode
+   */
+  public toggleManualMode(): boolean {
+    this.manualMode = !this.manualMode;
+    this.manualModeTimeout = null; // No timeout - user controlled toggle
+    
+    if (this.manualMode) {
+      console.log('🎛️ Switched to Manual Mode - Profile changes are now user-controlled');
+    } else {
+      console.log('🤖 Switched to Auto Mode - Profile changes based on music analysis');
+    }
+    
+    return this.manualMode;
+  }
+
+  /**
+   * Set manual mode state directly
+   */
+  public setManualMode(enabled: boolean): void {
+    this.manualMode = enabled;
+    this.manualModeTimeout = null; // No timeout - user controlled
+    
+    if (enabled) {
+      console.log('🎛️ Manual Mode enabled - Profile changes are now user-controlled');
+    } else {
+      console.log('🤖 Auto Mode enabled - Profile changes based on music analysis');
+    }
   }
 
   /**

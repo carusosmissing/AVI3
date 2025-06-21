@@ -85,21 +85,62 @@ export const useAudioInput = (): AudioInputHook => {
   const getAudioDevices = useCallback(async () => {
     try {
       console.log('🔍 Enumerating audio devices...');
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter(device => device.kind === 'audioinput');
       
-      console.log(`🎤 Found ${audioInputs.length} audio input devices:`);
+      // First, try to get devices without permission (will show basic info)
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      let audioInputs = devices.filter(device => device.kind === 'audioinput');
+      
+      console.log(`🎤 Found ${audioInputs.length} audio input devices (before permission)`);
+      
+      // Check if we have device labels - if not, we need permission
+      const hasLabels = audioInputs.some(device => device.label && device.label.trim() !== '');
+      
+      if (!hasLabels && audioInputs.length > 0) {
+        console.log('⚠️ Device labels not available - requesting microphone permission...');
+        try {
+          // Request microphone permission to get device labels
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+              echoCancellation: false, 
+              noiseSuppression: false,
+              autoGainControl: false 
+            } 
+          });
+          
+          // Stop the stream immediately - we just needed it for permissions
+          stream.getTracks().forEach(track => track.stop());
+          
+          console.log('✅ Microphone permission granted, re-enumerating devices...');
+          
+          // Now re-enumerate devices with proper labels
+          devices = await navigator.mediaDevices.enumerateDevices();
+          audioInputs = devices.filter(device => device.kind === 'audioinput');
+        } catch (permissionError) {
+          console.warn('⚠️ Could not get microphone permission:', permissionError);
+          // Continue with unlabeled devices
+        }
+      }
+      
+      console.log(`🎤 Final device list (${audioInputs.length} devices):`);
       audioInputs.forEach((device, index) => {
-        console.log(`  ${index + 1}. ${device.label || `Unnamed Device ${index + 1}`}`);
-        console.log(`     ID: ${device.deviceId}`);
-        console.log(`     Group: ${device.groupId}`);
+        const label = device.label || `Audio Input Device ${index + 1}`;
+        console.log(`  ${index + 1}. ${label}`);
+        console.log(`     ID: ${device.deviceId.substring(0, 20)}...`);
+        console.log(`     Group: ${device.groupId?.substring(0, 20)}...`);
       });
+      
+      // Also log some info about device capabilities if available
+      if (audioInputs.length === 0) {
+        console.warn('❌ No audio input devices found! Check system settings.');
+      } else if (!hasLabels && audioInputs.every(d => !d.label)) {
+        console.warn('⚠️ Device labels still not available - may need manual permission grant');
+      }
       
       setAvailableDevices(audioInputs);
       return audioInputs;
     } catch (err) {
       console.error('❌ Failed to enumerate devices:', err);
-      setError('Failed to access audio devices');
+      setError('Failed to access audio devices. Please check browser permissions.');
       return [];
     }
   }, []);
@@ -591,11 +632,47 @@ export const useAudioInput = (): AudioInputHook => {
   };
 
   /**
-   * Refresh devices manually
+   * Refresh devices manually - also requests permission if needed
    */
   const refreshDevices = useCallback(async () => {
     console.log('🔄 Manually refreshing audio devices...');
-    await getAudioDevices();
+    setError(null); // Clear any existing errors
+    
+    try {
+      // Always request permission when manually refreshing
+      console.log('🎤 Requesting microphone permission for device refresh...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: false, 
+          noiseSuppression: false,
+          autoGainControl: false 
+        } 
+      });
+      
+      // Stop the stream immediately
+      stream.getTracks().forEach(track => track.stop());
+      console.log('✅ Permission granted, enumerating devices...');
+      
+      // Now get devices with labels
+      await getAudioDevices();
+      
+    } catch (error) {
+      console.error('❌ Failed to refresh devices:', error);
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          setError('Microphone permission denied. Please allow microphone access to see available devices.');
+        } else if (error.name === 'NotFoundError') {
+          setError('No microphone found. Please connect an audio input device.');
+        } else {
+          setError(`Error refreshing devices: ${error.message}`);
+        }
+      } else {
+        setError('Failed to refresh audio devices');
+      }
+      
+      // Still try to get basic device info without permission
+      await getAudioDevices();
+    }
   }, [getAudioDevices]);
 
   // Initialize and get devices on mount

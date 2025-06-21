@@ -19,8 +19,8 @@ export const VisualDNAProfileSelector: React.FC<ProfileSelectorProps> = ({
     setIsExpanded(false);
   };
 
-  const handleAutoMode = () => {
-    visualDNA.exitManualMode();
+  const handleToggleMode = () => {
+    visualDNA.toggleManualMode();
   };
 
   // Profile color schemes for visual identification
@@ -80,35 +80,62 @@ export const VisualDNAProfileSelector: React.FC<ProfileSelectorProps> = ({
           overflowY: 'auto',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.8)'
         }}>
-          {/* Auto Mode Button */}
-          {isManualMode && (
+          <div style={{ color: '#fff', fontSize: '16px', marginBottom: '15px', fontWeight: 'bold' }}>
+            Visual DNA Profiles
+          </div>
+
+          {/* Manual/Auto Mode Toggle */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '20px',
+            padding: '15px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '8px',
+            border: '1px solid #444'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '18px' }}>
+                {isManualMode ? '🎛️' : '🤖'}
+              </span>
+              <div>
+                <div style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>
+                  {isManualMode ? 'Manual Control' : 'Automatic Selection'}
+                </div>
+                <div style={{ color: '#999', fontSize: '11px' }}>
+                  {isManualMode ? 'You control profile changes' : 'AI selects based on music'}
+                </div>
+              </div>
+            </div>
+            
+            {/* Toggle Switch */}
             <button
-              onClick={handleAutoMode}
+              onClick={handleToggleMode}
               style={{
-                width: '100%',
-                background: 'rgba(46, 213, 115, 0.2)',
-                border: '2px solid #2ed573',
-                color: '#2ed573',
-                padding: '10px',
-                borderRadius: '8px',
-                fontSize: '14px',
+                background: isManualMode ? '#ffa502' : '#2ed573',
+                border: 'none',
+                borderRadius: '20px',
+                width: '60px',
+                height: '30px',
+                position: 'relative',
                 cursor: 'pointer',
-                marginBottom: '15px',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(46, 213, 115, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(46, 213, 115, 0.2)';
+                transition: 'all 0.3s ease',
+                boxShadow: `0 0 10px ${isManualMode ? 'rgba(255, 165, 2, 0.5)' : 'rgba(46, 213, 115, 0.5)'}`
               }}
             >
-              🤖 Return to Auto Mode
+              <div style={{
+                position: 'absolute',
+                top: '3px',
+                left: isManualMode ? '33px' : '3px',
+                width: '24px',
+                height: '24px',
+                background: 'white',
+                borderRadius: '50%',
+                transition: 'all 0.3s ease',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+              }} />
             </button>
-          )}
-
-          <div style={{ color: '#fff', fontSize: '16px', marginBottom: '10px', fontWeight: 'bold' }}>
-            Visual DNA Profiles
           </div>
 
           {/* Profile Grid */}
@@ -125,6 +152,7 @@ export const VisualDNAProfileSelector: React.FC<ProfileSelectorProps> = ({
                 <button
                   key={profile.id}
                   onClick={() => handleProfileSelect(profile.id)}
+                  disabled={!isManualMode}
                   style={{
                     background: isActive 
                       ? `linear-gradient(135deg, ${colors.primary}40, ${colors.accent}40)`
@@ -132,20 +160,21 @@ export const VisualDNAProfileSelector: React.FC<ProfileSelectorProps> = ({
                     border: `2px solid ${isActive ? colors.primary : '#444'}`,
                     borderRadius: '8px',
                     padding: '12px',
-                    cursor: 'pointer',
+                    cursor: isManualMode ? 'pointer' : 'not-allowed',
                     transition: 'all 0.3s ease',
                     textAlign: 'left',
                     position: 'relative',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    opacity: isManualMode ? 1 : 0.5
                   }}
                   onMouseEnter={(e) => {
-                    if (!isActive) {
+                    if (!isActive && isManualMode) {
                       e.currentTarget.style.background = `linear-gradient(135deg, ${colors.primary}20, ${colors.accent}20)`;
                       e.currentTarget.style.borderColor = colors.primary;
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (!isActive) {
+                    if (!isActive && isManualMode) {
                       e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
                       e.currentTarget.style.borderColor = '#444';
                     }
@@ -212,17 +241,25 @@ export const VisualDNAProfileSelector: React.FC<ProfileSelectorProps> = ({
             })}
           </div>
 
-          {/* Info Text */}
+          {/* Updated Info Text */}
           <div style={{
             marginTop: '15px',
             padding: '10px',
-            background: 'rgba(255, 165, 2, 0.1)',
-            border: '1px solid #ffa502',
+            background: isManualMode ? 'rgba(255, 165, 2, 0.1)' : 'rgba(46, 213, 115, 0.1)',
+            border: `1px solid ${isManualMode ? '#ffa502' : '#2ed573'}`,
             borderRadius: '6px',
             fontSize: '11px',
-            color: '#ffa502'
+            color: isManualMode ? '#ffa502' : '#2ed573'
           }}>
-            💡 Manual mode stays active for 30 seconds, then returns to automatic profile selection based on music analysis.
+            {isManualMode ? (
+              <>
+                🎛️ <strong>Manual Mode:</strong> Click any profile to instantly switch. Toggle to Auto Mode for AI-driven selection based on music analysis.
+              </>
+            ) : (
+              <>
+                🤖 <strong>Auto Mode:</strong> Profiles automatically change based on music analysis. Toggle to Manual Mode to take control.
+              </>
+            )}
           </div>
         </div>
       )}

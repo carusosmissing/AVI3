@@ -111,19 +111,30 @@ function BeatCubes() {
     });
   });
 
+  // Load logo texture for beat cubes
+  const logoTexture = React.useMemo(() => {
+    const loader = new THREE.TextureLoader();
+    const texture = loader.load('/wicked-craniums-logo-2048.png');
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    return texture;
+  }, []);
+
   return (
     <group ref={groupRef}>
       <Box args={[0.5, 0.5, 0.5]} position={[-3, -2, 0]}>
-        <meshStandardMaterial color="#ff6b6b" />
+        <meshStandardMaterial map={logoTexture} color="#ff6b6b" transparent={true} opacity={0.9} />
       </Box>
       <Box args={[0.5, 0.5, 0.5]} position={[-1, -2, 0]}>
-        <meshStandardMaterial color="#4ecdc4" />
+        <meshStandardMaterial map={logoTexture} color="#4ecdc4" transparent={true} opacity={0.9} />
       </Box>
       <Box args={[0.5, 0.5, 0.5]} position={[1, -2, 0]}>
-        <meshStandardMaterial color="#45b7d1" />
+        <meshStandardMaterial map={logoTexture} color="#45b7d1" transparent={true} opacity={0.9} />
       </Box>
       <Box args={[0.5, 0.5, 0.5]} position={[3, -2, 0]}>
-        <meshStandardMaterial color="#f9ca24" />
+        <meshStandardMaterial map={logoTexture} color="#f9ca24" transparent={true} opacity={0.9} />
       </Box>
     </group>
   );
