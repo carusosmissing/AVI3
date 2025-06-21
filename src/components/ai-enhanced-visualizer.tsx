@@ -72,45 +72,53 @@ function CollapsibleSection({ title, children, defaultOpen = false }: { title: s
 function AIPredictiveBeatSphere({ aiData, bpmData }: { aiData: any, bpmData: any }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [predictedBeats, setPredictedBeats] = useState<number[]>([]);
+  const lastBeatTimeRef = useRef(0);
 
   useFrame((state) => {
     if (!meshRef.current || !aiData.isAIReady) return;
 
     const { predictiveBeats, aiConfidence, smartSmoothedValues } = aiData;
     
-    // Use real MIDI BPM data for accurate timing instead of AI-only BPM
-    const realBPM = bpmData.currentBPM || smartSmoothedValues.bpm || 120;
-    const realBeatPhase = bpmData.beatPhase || 0;
+    // PRIORITIZE MIDI BPM as main tempo driver
+    const primaryBPM = bpmData.isConnected && bpmData.currentBPM > 0 ? 
+      bpmData.currentBPM : smartSmoothedValues.bpm || 120;
     
-    // Combine real BPM timing with AI predictions
-    const now = performance.now();
-    const nextBeatTime = predictiveBeats.nextBeatPrediction;
-    const timeUntilBeat = nextBeatTime > 0 ? nextBeatTime - now : 0;
+    console.log(`🎵 Beat Sphere - Primary BPM: ${primaryBPM.toFixed(1)} (MIDI: ${bpmData.isConnected ? 'Connected' : 'Disconnected'})`);
     
-    // Use real MIDI beat phase as primary, AI prediction as enhancement
-    const beatDuration = 60000 / realBPM;
-    const aiPhase = bpmData.isConnected ? realBeatPhase : 
-      (timeUntilBeat > 0 ? 1 - (timeUntilBeat % beatDuration) / beatDuration : 0);
+    // Calculate beat phase based on MIDI or create our own timing
+    let beatPhase: number = 0;
+    if (bpmData.isConnected && bpmData.beatPhase !== undefined) {
+      beatPhase = bpmData.beatPhase;
+    } else {
+      // Create our own beat timing based on BPM
+      const now = performance.now();
+      const beatDuration = 60000 / primaryBPM; // ms per beat
+      beatPhase = (now % beatDuration) / beatDuration;
+    }
     
-    // Scale based on AI confidence and tempo stability
-    const confidenceMultiplier = 0.5 + (aiConfidence * 0.5);
-    const stabilityMultiplier = 0.5 + (predictiveBeats.tempoStability * 0.5);
+    // MUCH MORE DRAMATIC pulsing effect - make it clearly visible!
+    const basePulse = Math.sin(beatPhase * Math.PI * 2);
+    const dramaticPulseScale = 0.8 + (basePulse + 1) * 0.8; // Scale from 0.8 to 2.4 (3x size change!)
+    meshRef.current.scale.setScalar(dramaticPulseScale);
     
-    const pulseScale = 1 + Math.sin(aiPhase * Math.PI * 2) * 0.4 * confidenceMultiplier;
-    meshRef.current.scale.setScalar(pulseScale * stabilityMultiplier);
-    
-    // Color changes based on tempo stability and confidence
+    // Color changes based on BPM - faster BPM = more colorful
     const material = meshRef.current.material as THREE.MeshStandardMaterial;
-    const hue = aiConfidence * 0.3 + predictiveBeats.tempoStability * 0.7;
-    material.color.setHSL(hue, 0.8, 0.6);
+    const bpmHue = (primaryBPM - 60) / 140; // Map 60-200 BPM to 0-1 hue range
+    const saturation = bpmData.isConnected ? 1.0 : 0.5; // Full saturation when MIDI connected
+    material.color.setHSL(bpmHue, saturation, 0.6);
     
-    // Emissive glow on predicted beat
-    const beatGlow = aiPhase > 0.9 ? (aiPhase - 0.9) * 10 * aiConfidence : 0;
-    material.emissive.setScalar(beatGlow);
+    // DRAMATIC beat flash - much more visible emissive glow
+    const beatFlash = beatPhase > 0.85 ? (beatPhase - 0.85) * 6.67 : 0; // Intense flash for last 15% of beat
+    material.emissive.setScalar(beatFlash * 0.8); // Much brighter emissive
     
-    // Rotation speed based on AI-smoothed BPM
-    const rotationSpeed = (smartSmoothedValues.bpm / 120) * 0.02;
-    meshRef.current.rotation.y += rotationSpeed;
+    // MUCH FASTER rotation speed - directly tied to BPM
+    const dramaticRotationSpeed = (primaryBPM / 60) * 0.05; // 2x faster rotation at 120 BPM
+    meshRef.current.rotation.y += dramaticRotationSpeed;
+    meshRef.current.rotation.x += dramaticRotationSpeed * 0.5; // Add X rotation too
+    
+    // Position bouncing based on beat phase
+    const bounceHeight = Math.sin(beatPhase * Math.PI * 2) * 0.5;
+    meshRef.current.position.y = 2 + bounceHeight;
   });
 
   return (
@@ -148,28 +156,47 @@ function GenreAdaptiveTorus({ aiData, bpmData }: { aiData: any, bpmData: any }) 
     const genre = patternRecognition.genreClassification.detectedGenre;
     const confidence = patternRecognition.genreClassification.confidence;
     
-    // Use real BPM for rotation timing
-    const realBPM = bpmData.currentBPM || smartSmoothedValues.bpm || 120;
-    const bpmFactor = realBPM / 120; // Normalize to 120 BPM baseline
+    // PRIORITIZE MIDI BPM as main tempo driver
+    const primaryBPM = bpmData.isConnected && bpmData.currentBPM > 0 ? 
+      bpmData.currentBPM : smartSmoothedValues.bpm || 120;
     
-    // Rotate based on detected patterns and real BPM
-    const patternComplexity = patternRecognition.genreClassification.characteristics.rhythmComplexity;
-    torusRef.current.rotation.x += delta * patternComplexity * 0.5 * bpmFactor;
-    torusRef.current.rotation.z += delta * (smartSmoothedValues.energy || 0.5) * 0.3 * bpmFactor;
+    console.log(`🎭 Genre Torus - Primary BPM: ${primaryBPM.toFixed(1)} (MIDI: ${bpmData.isConnected ? 'Connected' : 'Disconnected'})`);
     
-    // Color based on genre with confidence weighting
-    const genreHue = genreColors[genre] || 0.5;
-    const finalHue = genreHue * confidence + 0.5 * (1 - confidence);
+    // MUCH MORE DRAMATIC rotation based on BPM - make it clearly visible!
+    const dramaticBpmFactor = primaryBPM / 60; // Normalize to 60 BPM baseline for more dramatic effect
+    const rotationMultiplier = 2.0; // Make rotations much more pronounced
     
+    // Calculate beat phase for synchronized effects
+    let beatPhase: number = 0;
+    if (bpmData.isConnected && bpmData.beatPhase !== undefined) {
+      beatPhase = bpmData.beatPhase;
+    } else {
+      const now = performance.now();
+      const beatDuration = 60000 / primaryBPM;
+      beatPhase = (now % beatDuration) / beatDuration;
+    }
+    
+    // Rotate based on BPM with much more dramatic effect
+    torusRef.current.rotation.x += delta * dramaticBpmFactor * rotationMultiplier;
+    torusRef.current.rotation.z += delta * dramaticBpmFactor * rotationMultiplier * 0.7;
+    
+    // Color changes more dramatically based on BPM
     const material = torusRef.current.material as THREE.MeshStandardMaterial;
-    material.color.setHSL(finalHue, 0.7, 0.5);
+    const bpmHue = (primaryBPM - 60) / 140; // Map BPM to hue
+    const saturation = bpmData.isConnected ? 0.9 : 0.5;
+    material.color.setHSL(bpmHue, saturation, 0.6);
     
-    // Scale based on energy prediction
-    const energyScale = 0.8 + (smartSmoothedValues.energy * 0.4);
-    torusRef.current.scale.setScalar(energyScale);
+    // DRAMATIC scale pulsing with beat
+    const beatPulse = Math.sin(beatPhase * Math.PI * 2);
+    const dramaticScale = 0.7 + (beatPulse + 1) * 0.4; // Scale from 0.7 to 1.5
+    torusRef.current.scale.setScalar(dramaticScale);
     
-    // Wireframe toggle based on energy trend
-    material.wireframe = patternRecognition.energyPrediction.energyTrend === 'rising';
+    // Beat-synchronized wireframe toggle
+    material.wireframe = beatPhase > 0.5; // Toggle wireframe on second half of beat
+    
+    // Position wobbling based on BPM
+    const wobble = Math.sin(state.clock.elapsedTime * dramaticBpmFactor) * 0.3;
+    torusRef.current.position.x = wobble;
   });
 
   return (
@@ -183,7 +210,7 @@ function GenreAdaptiveTorus({ aiData, bpmData }: { aiData: any, bpmData: any }) 
   );
 }
 
-// Memory-Learning Particle System
+// Memory-Learning Particle System - Enhanced for BPM visualization
 function MemoryLearningParticles({ aiData, controllerState, bpmData }: { aiData: any, controllerState: any, bpmData: any }) {
   const particlesRef = useRef<THREE.Points>(null);
   const particleCount = 500;
@@ -205,6 +232,20 @@ function MemoryLearningParticles({ aiData, controllerState, bpmData }: { aiData:
 
     const { memorySystem, patternRecognition, smartSmoothedValues } = aiData;
     
+    // PRIORITIZE MIDI BPM for particle movement
+    const primaryBPM = bpmData.isConnected && bpmData.currentBPM > 0 ? 
+      bpmData.currentBPM : smartSmoothedValues.bpm || 120;
+    
+    // Calculate beat phase
+    let beatPhase: number = 0;
+    if (bpmData.isConnected && bpmData.beatPhase !== undefined) {
+      beatPhase = bpmData.beatPhase;
+    } else {
+      const now = performance.now();
+      const beatDuration = 60000 / primaryBPM;
+      beatPhase = (now % beatDuration) / beatDuration;
+    }
+    
     // Calculate memory influence
     const shortTermSize = memorySystem.shortTermMemory.size || 0;
     const longTermSize = memorySystem.longTermMemory.size || 0;
@@ -213,35 +254,34 @@ function MemoryLearningParticles({ aiData, controllerState, bpmData }: { aiData:
     // Smooth memory intensity changes
     memoryIntensityRef.current += (memoryIntensity - memoryIntensityRef.current) * 0.1;
     
-    // Animate particles based on learned patterns
+    // Animate particles based on BPM and beat phase
     const geometry = particlesRef.current.geometry;
     const positions = geometry.attributes.position.array as Float32Array;
     
-    const detectedPatterns = patternRecognition.detectedPatterns || [];
-    const patternInfluence = Math.min(1, detectedPatterns.length / 10);
+    // BPM-based movement speed
+    const bpmMovementSpeed = (primaryBPM / 120) * 0.1; // Much faster movement
+    const beatPulse = Math.sin(beatPhase * Math.PI * 2);
     
     for (let i = 0; i < particleCount; i++) {
       const i3 = i * 3;
       
-      // Base movement influenced by memory
-      const memorySpeed = memoryIntensityRef.current * 0.02;
-      positions[i3] += Math.sin(state.clock.elapsedTime + i) * memorySpeed;
-      positions[i3 + 1] += Math.cos(state.clock.elapsedTime + i) * memorySpeed;
-      positions[i3 + 2] += Math.sin(state.clock.elapsedTime * 0.5 + i) * memorySpeed;
+      // DRAMATIC BPM-synchronized movement
+      const particlePhase = (i / particleCount) * Math.PI * 2;
+      const xMovement = Math.sin(state.clock.elapsedTime * bpmMovementSpeed + particlePhase) * (0.05 + beatPulse * 0.05);
+      const yMovement = Math.cos(state.clock.elapsedTime * bpmMovementSpeed + particlePhase) * (0.05 + beatPulse * 0.05);
+      const zMovement = Math.sin(state.clock.elapsedTime * bpmMovementSpeed * 0.5 + particlePhase) * (0.03 + beatPulse * 0.03);
       
-      // Pattern-based modulation
-      if (detectedPatterns.length > 0) {
-        const patternIndex = i % detectedPatterns.length;
-        const pattern = detectedPatterns[patternIndex];
-        if (pattern && pattern.pattern) {
-          const patternValue = pattern.pattern[i % pattern.pattern.length] || 0;
-          positions[i3 + 1] += patternValue * patternInfluence * 0.01;
-        }
+      positions[i3] += xMovement;
+      positions[i3 + 1] += yMovement;  
+      positions[i3 + 2] += zMovement;
+      
+      // Beat-synchronized "explosion" effect
+      if (beatPhase > 0.9) {
+        const explosionForce = (beatPhase - 0.9) * 10; // Intense explosion in last 10% of beat
+        positions[i3] += (Math.random() - 0.5) * explosionForce;
+        positions[i3 + 1] += (Math.random() - 0.5) * explosionForce;
+        positions[i3 + 2] += (Math.random() - 0.5) * explosionForce;
       }
-      
-      // Controller influence with AI smoothing
-      const crossfaderInfluence = (controllerState.crossfader - 64) / 127;
-      positions[i3] += crossfaderInfluence * smartSmoothedValues.volume / 127 * 0.005;
       
       // Boundary wrapping
       for (let j = 0; j < 3; j++) {
@@ -251,6 +291,15 @@ function MemoryLearningParticles({ aiData, controllerState, bpmData }: { aiData:
     }
     
     geometry.attributes.position.needsUpdate = true;
+    
+    // Change particle color based on BPM
+    const material = particlesRef.current.material as THREE.PointsMaterial;
+    const bpmHue = (primaryBPM - 60) / 140;
+    material.color.setHSL(bpmHue, bpmData.isConnected ? 1.0 : 0.5, 0.8);
+    
+    // Beat-synchronized size pulsing
+    const beatPulseSize = 0.02 + (beatPulse + 1) * 0.03; // Pulse from 0.02 to 0.08
+    material.size = beatPulseSize;
   });
 
   return (
@@ -278,8 +327,22 @@ function SmartSmoothingEQBars({ aiData, controllerState, bpmData }: { aiData: an
   const groupRef = useRef<THREE.Group>(null);
   const smoothedEQRef = useRef({ low: 64, mid: 64, high: 64 });
 
-  useFrame(() => {
+  useFrame((state) => {
     if (!groupRef.current || !aiData.isAIReady) return;
+
+    // PRIORITIZE MIDI BPM for EQ bar animation
+    const primaryBPM = bpmData.isConnected && bpmData.currentBPM > 0 ? 
+      bpmData.currentBPM : aiData.smartSmoothedValues?.bpm || 120;
+    
+    // Calculate beat phase
+    let beatPhase: number = 0;
+    if (bpmData.isConnected && bpmData.beatPhase !== undefined) {
+      beatPhase = bpmData.beatPhase;
+    } else {
+      const now = performance.now();
+      const beatDuration = 60000 / primaryBPM;
+      beatPhase = (now % beatDuration) / beatDuration;
+    }
 
     // Get AI-smoothed EQ values
     const rawEQ = {
@@ -294,10 +357,10 @@ function SmartSmoothingEQBars({ aiData, controllerState, bpmData }: { aiData: an
     smoothedEQRef.current.mid += (rawEQ.mid - smoothedEQRef.current.mid) * adaptationRate;
     smoothedEQRef.current.high += (rawEQ.high - smoothedEQRef.current.high) * adaptationRate;
 
-    // Update EQ bars with predictive elements
+    // Update EQ bars with DRAMATIC beat-synchronized effects
     const children = groupRef.current.children;
     const eqValues = [smoothedEQRef.current.low, smoothedEQRef.current.mid, smoothedEQRef.current.high];
-    const predictedEnergy = aiData.patternRecognition.energyPrediction.predictedEnergy || [];
+    const beatPulse = Math.sin(beatPhase * Math.PI * 2);
 
     children.forEach((bar, index) => {
       if (index >= 3) return; // Only process first 3 bars
@@ -305,25 +368,25 @@ function SmartSmoothingEQBars({ aiData, controllerState, bpmData }: { aiData: an
       const mesh = bar as THREE.Mesh;
       const normalizedEQ = eqValues[index] / 127;
       
-      // Add prediction overlay
-      const prediction = predictedEnergy[index] || normalizedEQ;
-      const predictionInfluence = aiData.aiConfidence * 0.3;
+      // DRAMATIC beat-synchronized height changes
+      const baseHeight = 0.5 + normalizedEQ * 2; // Base height from EQ
+      const beatPulseHeight = (beatPulse + 1) * 0.5; // Beat pulse from 0 to 1
+      const finalHeight = baseHeight + beatPulseHeight; // Combine for dramatic effect
+      mesh.scale.y = finalHeight;
       
-      const finalHeight = (normalizedEQ * (1 - predictionInfluence)) + (prediction * predictionInfluence);
-      mesh.scale.y = 0.1 + finalHeight * 3;
-      
-      // Color based on energy trend
+      // Color based on BPM and beat phase
       const material = mesh.material as THREE.MeshStandardMaterial;
-      const trend = aiData.patternRecognition.energyPrediction.energyTrend;
-      let hue = index * 0.3;
+      const bpmHue = ((primaryBPM - 60) / 140 + index * 0.2) % 1; // Offset hue per bar
+      const saturation = bpmData.isConnected ? 0.9 : 0.5;
+      material.color.setHSL(bpmHue, saturation, 0.6);
       
-      if (trend === 'rising') hue += 0.1;
-      else if (trend === 'falling') hue -= 0.1;
+      // DRAMATIC beat flash emissive
+      const beatFlash = beatPhase > 0.85 ? (beatPhase - 0.85) * 6.67 : 0;
+      material.emissive.setScalar(beatFlash * 0.6);
       
-      material.color.setHSL(hue % 1, 0.8, 0.6);
-      
-      // Emissive based on AI confidence
-      material.emissive.setScalar(aiData.aiConfidence * 0.2);
+      // Beat-synchronized position bouncing
+      const bounce = Math.sin(beatPhase * Math.PI * 2 + index * 0.5) * 0.2;
+      mesh.position.y = bounce;
     });
   });
 
@@ -383,7 +446,7 @@ function AIStatusDisplay({ aiData, bpmData }: { aiData: any, bpmData: any }) {
         anchorX="center"
         anchorY="middle"
       >
-        MIDI BPM: {bpmData.currentBPM.toFixed(1)} | AI BPM: {aiData.smartSmoothedValues.bpm.toFixed(1)} | Patterns: {aiData.patternRecognition.detectedPatterns.length}
+        PRIMARY BPM: {bpmData.isConnected ? `${bpmData.currentBPM.toFixed(1)} (MIDI)` : `${aiData.smartSmoothedValues.bpm.toFixed(1)} (AI)`} | Patterns: {aiData.patternRecognition.detectedPatterns.length}
       </Text>
     </>
   );
@@ -421,8 +484,13 @@ export default function AIEnhancedVisualizer({
   // Get traditional BPM data
   const bpmData = useMIDIBPM();
   
-  // Get AI analysis
-  const aiData = useAIAudioAnalyzer(aiController);
+  // Get AI analysis - Pass MIDI BPM data to prioritize MIDI tempo
+  const aiData = useAIAudioAnalyzer(aiController, {
+    currentBPM: bpmData.currentBPM,
+    isConnected: bpmData.isConnected,
+    beatPhase: bpmData.beatPhase,
+    beatInterval: bpmData.beatInterval
+  });
 
   // Load tracks into AI system when available - using ref to prevent reload loop
   const tracksLoadedRef = React.useRef(false);
@@ -848,8 +916,7 @@ export default function AIEnhancedVisualizer({
             </div>
             <div><strong>Beat Pattern:</strong> {aiData.predictiveBeats?.beatPattern?.map(interval => `${interval.toFixed(0)}ms`).join(', ') || 'Learning...'}</div>
             <div><strong>Phase Correction:</strong> {(aiData.predictiveBeats?.phaseCorrection || 0).toFixed(2)}ms</div>
-            <div><strong>MIDI BPM:</strong> <span style={{color: bpmData.isConnected ? '#2ed573' : '#ff4757', minWidth: '50px', display: 'inline-block', textAlign: 'right'}}>{bpmData.currentBPM.toFixed(1)} BPM</span></div>
-            <div><strong>AI Smoothed BPM:</strong> <span style={{minWidth: '50px', display: 'inline-block', textAlign: 'right'}}>{aiData.smartSmoothedValues?.bpm?.toFixed(1) || 'N/A'} BPM</span></div>
+            <div><strong>PRIMARY TEMPO:</strong> <span style={{color: bpmData.isConnected ? '#2ed573' : '#ffa502', fontWeight: 'bold', minWidth: '50px', display: 'inline-block', textAlign: 'right'}}>{bpmData.isConnected && bpmData.currentBPM > 0 ? `${bpmData.currentBPM.toFixed(1)} (MIDI)` : `${aiData.smartSmoothedValues?.bpm?.toFixed(1) || 'N/A'} (AI)`}</span></div>
             <div><strong>Beat Phase:</strong> <span style={{minWidth: '30px', display: 'inline-block', textAlign: 'right'}}>{(bpmData.beatPhase * 100).toFixed(0)}%</span></div>
           </div>
         </CollapsibleSection>

@@ -11,6 +11,13 @@ import {
   Track
 } from '../types';
 
+interface MIDITempoData {
+  currentBPM: number;
+  isConnected: boolean;
+  beatPhase: number;
+  beatInterval: number;
+}
+
 interface AIAudioAnalyzerHook {
   aiAnalyzer: AIAudioAnalyzer | null;
   isAIReady: boolean;
@@ -51,7 +58,10 @@ interface AIAudioAnalyzerHook {
   loadTrackDatabase: (tracks: Track[]) => void;
 }
 
-export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudioAnalyzerHook => {
+export const useAIAudioAnalyzer = (
+  controller: DDJFlx4Controller | null, 
+  midiTempoData?: MIDITempoData
+): AIAudioAnalyzerHook => {
   const [aiAnalyzer, setAIAnalyzer] = useState<RealTimeAudioAnalyzer | null>(null);
   const [isAIReady, setIsAIReady] = useState(false);
   const [aiState, setAIState] = useState<any>(null);
@@ -114,9 +124,12 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
           ? audioInput.audioMetrics  // Use real audio analysis
           : createAudioMetricsFromController(controllerState); // Fall back to simulation
         
-        // Extract MIDI data for AI
+        // Extract MIDI data for AI - prioritize MIDI BPM
+        const primaryBPM = midiTempoData?.isConnected && midiTempoData.currentBPM > 0 ? 
+          midiTempoData.currentBPM : 120;
+        
         const midiData = {
-          bpm: 120, // Will be enhanced with BPM detection
+          bpm: primaryBPM, // Use MIDI BPM as primary tempo driver
           volume: (controllerState.channelA.volume + controllerState.channelB.volume) / 2,
           eq: {
             low: (controllerState.channelA.eq.low + controllerState.channelB.eq.low) / 2,
@@ -126,8 +139,16 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
           crossfader: controllerState.crossfader,
           timestamp: now,
           // Include real audio level if available
-          audioLevel: audioInput.audioLevel || 0
+          audioLevel: audioInput.audioLevel || 0,
+          // Pass MIDI tempo data to AI for enhanced analysis
+          midiTempo: midiTempoData ? {
+            isConnected: midiTempoData.isConnected,
+            beatPhase: midiTempoData.beatPhase,
+            beatInterval: midiTempoData.beatInterval
+          } : null
         };
+        
+        console.log(`🎵 AI Hook - Using Primary BPM: ${primaryBPM.toFixed(1)} (MIDI: ${midiTempoData?.isConnected ? 'Connected' : 'Disconnected'})`);
 
         // Run AI analysis with real or simulated audio data plus MIDI
         const audioInputData = audioInput.isListening && audioInput.audioMetrics ? {
@@ -215,9 +236,12 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
         
         console.log('🤖 Running AI analysis with IMMEDIATE audioLevel:', currentAudioLevel.toFixed(3), '(vs React state:', audioInput.audioLevel.toFixed(3), ')');
         
-        // Create enhanced MIDI data enriched with real audio analysis
+        // Create enhanced MIDI data enriched with real audio analysis - prioritize MIDI BPM
+        const primaryBPM = midiTempoData?.isConnected && midiTempoData.currentBPM > 0 ? 
+          midiTempoData.currentBPM : 120;
+        
         const midiData = {
-          bpm: 120, // Will be enhanced with real-time beat detection from audio
+          bpm: primaryBPM, // Use MIDI BPM as primary tempo driver
           volume: Math.max(1, currentAudioLevel * 127), // Ensure minimum volume for processing
           eq: {
             // Extract frequency band information from spectral data for MIDI simulation
@@ -238,8 +262,16 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
             brightness: Math.max(100, currentAudioLevel * 2000), // Ensure minimum values
             bandwidth: Math.max(50, currentAudioLevel * 1000),
             rolloff: Math.max(200, currentAudioLevel * 4000)
-          }
+          },
+          // Pass MIDI tempo data to AI for enhanced analysis
+          midiTempo: midiTempoData ? {
+            isConnected: midiTempoData.isConnected,
+            beatPhase: midiTempoData.beatPhase,
+            beatInterval: midiTempoData.beatInterval
+          } : null
         };
+        
+        console.log(`🎵 Audio Analysis Loop - Using Primary BPM: ${primaryBPM.toFixed(1)} (MIDI: ${midiTempoData?.isConnected ? 'Connected' : 'Disconnected'})`);
 
         // Run AI analysis with real audio data combined with MIDI-derived data
         const audioInputData = {
@@ -313,7 +345,7 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
       clearInterval(audioAnalysisInterval);
       console.log('🔇 Stopped enhanced audio AI analysis');
     };
-  }, [aiAnalyzer, isAIReady, audioInput.isListening]); // Remove audioLevel dependency to prevent restart loop
+  }, [aiAnalyzer, isAIReady, audioInput.isListening, midiTempoData]); // Include MIDI tempo data for updates
 
   /**
    * Create audio metrics from controller state
@@ -346,7 +378,7 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
   };
 
   /**
-   * Update smoothed values using AI filters
+   * Update smoothed values using AI filters - prioritize MIDI BPM
    */
   const updateSmoothedValues = (analyzer: RealTimeAudioAnalyzer, midiData: any) => {
     const filters = analyzer.smartSmoothing.adaptiveFilters;
@@ -355,10 +387,15 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
     const volumeFilter = filters.get('volume');
     const energyFilter = filters.get('energy');
     
-    setSmartSmoothedValues(prev => ({
-      bpm: bpmFilter && bpmFilter.history.length > 0 
+    // Prioritize MIDI BPM over AI-smoothed BPM
+    const primaryBPM = midiData.midiTempo?.isConnected && midiData.bpm > 0 ? 
+      midiData.bpm : // Use MIDI BPM directly (no AI smoothing needed for hardware tempo)
+      (bpmFilter && bpmFilter.history.length > 0 
         ? bpmFilter.history[bpmFilter.history.length - 1] 
-        : midiData.bpm || prev.bpm,
+        : midiData.bpm);
+    
+    setSmartSmoothedValues(prev => ({
+      bpm: primaryBPM || prev.bpm,
       volume: volumeFilter && volumeFilter.history.length > 0
         ? volumeFilter.history[volumeFilter.history.length - 1]
         : midiData.volume || prev.volume,
@@ -366,6 +403,8 @@ export const useAIAudioAnalyzer = (controller: DDJFlx4Controller | null): AIAudi
         ? energyFilter.history[energyFilter.history.length - 1]
         : analyzer.patternRecognition.energyPrediction.currentEnergy || prev.energy
     }));
+    
+    console.log(`🎵 Smoothed Values - Primary BPM: ${primaryBPM.toFixed(1)} (MIDI: ${midiData.midiTempo?.isConnected ? 'Connected' : 'Disconnected'})`);
   };
 
   /**
