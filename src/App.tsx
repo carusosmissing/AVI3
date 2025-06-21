@@ -3,6 +3,7 @@ import './App.css';
 import VisualizerScene from './components/visualizer-scene';
 import AIEnhancedVisualizer from './components/ai-enhanced-visualizer';
 import TrackIdentificationPanel from './components/track-identification-panel';
+import { VisualDNAIntegration } from './components/visual-dna-integration';
 import useMIDIBPM from './hooks/useMIDIBPM';
 
 import { DDJFlx4Controller } from './controllers/ddj-flx4-controller';
@@ -32,8 +33,8 @@ function App() {
 
 
   
-  // Visualizer mode
-  const [useAIVisualizer, setUseAIVisualizer] = useState(true);
+  // Visualizer mode - now with three options
+  const [visualizerMode, setVisualizerMode] = useState<'basic' | 'ai' | 'visual-dna'>('visual-dna');
   
   // UI state
   const [isControllerSectionCollapsed, setIsControllerSectionCollapsed] = useState(false);
@@ -341,20 +342,40 @@ function App() {
           <div className="visualizer-toggle">
             <div className="mode-selection">
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                <input
-                  type="checkbox"
-                  checked={useAIVisualizer}
-                  onChange={(e) => setUseAIVisualizer(e.target.checked)}
-                  style={{ transform: 'scale(1.2)' }}
-                />
-                <span style={{ fontWeight: 'bold' }}>
-                  🤖 AI-Enhanced Visualizer {useAIVisualizer ? '(ACTIVE)' : '(OFF)'}
-                </span>
+                <select
+                  value={visualizerMode}
+                  onChange={(e) => setVisualizerMode(e.target.value as 'basic' | 'ai' | 'visual-dna')}
+                  style={{
+                    padding: '5px 10px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    backgroundColor: '#2c3e50',
+                    color: 'white',
+                    border: '1px solid #34495e',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="basic">🎵 Basic Visualizer</option>
+                  <option value="ai">🤖 AI-Enhanced</option>
+                  <option value="visual-dna">🧬 Visual DNA</option>
+                </select>
               </label>
             </div>
             
             <div className="mode-description">
-              {useAIVisualizer ? (
+              {visualizerMode === 'visual-dna' ? (
+                <>
+                  🧬 <strong>Visual DNA Mode:</strong> AI-powered visual profiles
+                  <div style={{ fontSize: '12px', color: '#a4b0be', marginTop: '8px' }}>
+                    • 10 unique visual DNA profiles<br/>
+                    • Genre-based automatic switching<br/>
+                    • Dynamic color palette generation<br/>
+                    • Smooth transitions between profiles<br/>
+                    • MIDI & audio reactive behaviors
+                  </div>
+                </>
+              ) : visualizerMode === 'ai' ? (
                 <>
                   🧠 <strong>AI Mode:</strong> Predictive beats + learning + smart smoothing
                   <div style={{ fontSize: '12px', color: '#a4b0be', marginTop: '8px' }}>
@@ -469,7 +490,15 @@ function App() {
       </div>
 
       {/* Main Visualizer */}
-      {useAIVisualizer ? (
+      {visualizerMode === 'visual-dna' ? (
+        <VisualDNAIntegration
+          controller={ddjController}
+          controllerState={appState.controller}
+          visualParams={appState.visualParams}
+          identificationTracks={identificationTracks}
+          onTrackIdentification={handleTrackIdentification}
+        />
+      ) : visualizerMode === 'ai' ? (
         <AIEnhancedVisualizer
           controller={ddjController}
           controllerState={appState.controller}

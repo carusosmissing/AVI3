@@ -35,7 +35,7 @@ export default function TrackIdentificationPanel({
         hotCues: [],
         memoryCues: [],
         beatGrid: { beats: [], bpm: 128, firstBeatTime: 0 },
-        energyAnalysis: { overall: 7, intro: 4, verse: 6, chorus: 8, bridge: 7, outro: 3 },
+        energyAnalysis: { overall: 7, intro: 4, breakdown: 6, buildup: 8, drop: 7, outro: 3 },
         songStructure: {
           intro: { start: 0, end: 24 },
           verses: [{ start: 24, end: 72 }, { start: 120, end: 168 }],
@@ -58,7 +58,7 @@ export default function TrackIdentificationPanel({
         hotCues: [],
         memoryCues: [],
         beatGrid: { beats: [], bpm: 130, firstBeatTime: 0 },
-        energyAnalysis: { overall: 8, intro: 5, verse: 7, chorus: 9, bridge: 8, outro: 4 },
+        energyAnalysis: { overall: 8, intro: 5, breakdown: 7, buildup: 9, drop: 8, outro: 4 },
         songStructure: {
           intro: { start: 0, end: 36 },
           verses: [{ start: 36, end: 108 }, { start: 180, end: 252 }],

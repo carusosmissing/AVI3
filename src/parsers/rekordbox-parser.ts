@@ -123,7 +123,14 @@ export class RekordboxParser {
         beatGrid,
         hotCues,
         memoryCues,
-        energyAnalysis
+        energyAnalysis: {
+          overall: energyAnalysis.overall,
+          intro: energyAnalysis.intro,
+          breakdown: energyAnalysis.verse,
+          buildup: energyAnalysis.chorus,
+          drop: energyAnalysis.bridge,
+          outro: energyAnalysis.outro
+        }
       };
       
       return track;

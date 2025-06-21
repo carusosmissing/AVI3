@@ -956,17 +956,22 @@ export class RealTimeAudioAnalyzer implements AIAudioAnalyzer {
       const timeOffset = this.currentIdentification?.analysisEnhancement.timeInTrack || 0;
       const section = this.currentIdentification?.analysisEnhancement.songSection || 'unknown';
       
+      // Update pattern recognition based on song section and track data
       switch (section) {
         case 'intro':
           this.patternRecognition.energyPrediction.currentEnergy = track.energyAnalysis.intro / 10;
           this.patternRecognition.energyPrediction.energyTrend = 'rising';
           break;
-        case 'verse':
-          this.patternRecognition.energyPrediction.currentEnergy = track.energyAnalysis.verse / 10;
+        case 'breakdown':
+          this.patternRecognition.energyPrediction.currentEnergy = track.energyAnalysis.breakdown / 10;
           this.patternRecognition.energyPrediction.energyTrend = 'stable';
           break;
-        case 'chorus':
-          this.patternRecognition.energyPrediction.currentEnergy = track.energyAnalysis.chorus / 10;
+        case 'buildup':
+          this.patternRecognition.energyPrediction.currentEnergy = track.energyAnalysis.buildup / 10;
+          this.patternRecognition.energyPrediction.energyTrend = 'rising';
+          break;
+        case 'drop':
+          this.patternRecognition.energyPrediction.currentEnergy = track.energyAnalysis.drop / 10;
           this.patternRecognition.energyPrediction.energyTrend = 'stable';
           break;
         case 'outro':

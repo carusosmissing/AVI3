@@ -23,6 +23,12 @@ export interface Track {
   memoryCues: MemoryCue[];
   energyAnalysis?: EnergyAnalysis;
   songStructure?: SongStructure;
+  musicalAnalysis?: {
+    keyConfidence: number;
+    bpmVariance: number;
+    energyCurve: number[];
+    timbreVectors: number[][];
+  };
 }
 
 export interface WaveformData {
@@ -62,9 +68,9 @@ export interface MemoryCue {
 export interface EnergyAnalysis {
   overall: number; // 1-10 scale
   intro: number;
-  verse: number;
-  chorus: number;
-  bridge: number;
+  breakdown: number;
+  buildup: number;
+  drop: number;
   outro: number;
 }
 
@@ -339,4 +345,94 @@ export interface MLModels {
   genreClassifier: AudioNeuralNetwork;
   energyPredictor: AudioNeuralNetwork;
   patternRecognizer: AudioNeuralNetwork;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  tracks: Track[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RekordboxData {
+  tracks: Track[];
+  playlists: Playlist[];
+  importedAt: number;
+}
+
+// Visual DNA System Types
+export interface ColorPalette {
+  primary: string;
+  secondary: string;
+  accent: string;
+  background: string;
+  highlights: string[];
+  gradients: Array<{ from: string; to: string; angle: number }>;
+}
+
+export interface VisualComplexity {
+  particleCount: number;
+  geometryDetail: number;
+  layerCount: number;
+  effectIntensity: number;
+  movementSpeed: number;
+  turbulence: number;
+}
+
+export interface TransitionStyle {
+  type: 'smooth' | 'hard' | 'glitch' | 'morph' | 'dissolve' | 'shatter';
+  duration: number;
+  easing: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'bounce' | 'elastic';
+  intensity: number;
+}
+
+export interface VisualElements {
+  type: 'geometric' | 'organic' | 'hybrid';
+  dimension: '2D' | '3D' | 'fractal';
+  shapes: string[];
+  textures: string[];
+  behaviors: Array<{
+    name: string;
+    intensity: number;
+    frequency: number;
+  }>;
+}
+
+export interface EnergyMapping {
+  buildUpCurve: number[];
+  dropImpact: number;
+  breakdownSoftness: number;
+  peakIntensity: number;
+  energyFlow: 'linear' | 'exponential' | 'logarithmic' | 'sine';
+}
+
+export interface VisualDNAProfile {
+  id: string;
+  name: string;
+  description: string;
+  colorPalette: ColorPalette;
+  complexity: VisualComplexity;
+  transitionStyle: TransitionStyle;
+  visualElements: VisualElements;
+  energyMapping: EnergyMapping;
+  genreAffinity: string[];
+  moodTags: string[];
+  reactivity: {
+    bass: number;
+    mid: number;
+    treble: number;
+    rhythm: number;
+    harmony: number;
+  };
+}
+
+export interface ActiveVisualState {
+  currentProfile: VisualDNAProfile;
+  targetProfile: VisualDNAProfile | null;
+  interpolationProgress: number;
+  colorTransitions: Map<string, { from: string; to: string; progress: number }>;
+  complexityTransitions: Map<string, { from: number; to: number; progress: number }>;
+  activePatterns: Array<{ pattern: any; confidence: number }>;
+  midiModulations: Map<string, number>;
 } 

@@ -1,18 +1,22 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text, Box, Sphere, Torus } from '@react-three/drei';
 import * as THREE from 'three';
-import { DDJControllerState, VisualParams } from '../types';
-import { useAIAudioAnalyzer } from '../hooks/useAIAudioAnalyzer';
-import { DDJFlx4Controller } from '../controllers/ddj-flx4-controller';
+import { DDJFlx4AIController } from '../controllers/ddj-flx4-ai-controller';
+import { RekordboxParser } from '../parsers/rekordbox-parser';
+import VisualizerScene from './visualizer-scene';
+import { VisualDNAVisualizer } from './visual-dna-visualizer';
+import AudioInputPanel from './audio-input-panel';
+import TrackIdentificationPanel from './track-identification-panel';
+import { IdentificationResult } from '../ai/track-identifier';
+import { Track } from '../types';
+import useAIAudioAnalyzer from '../hooks/useAIAudioAnalyzer';
 import useMIDIBPM from '../hooks/useMIDIBPM';
 
-import { Track } from '../types';
-
 interface AIEnhancedVisualizerProps {
-  controller: DDJFlx4Controller | null;
-  controllerState: DDJControllerState;
-  visualParams: VisualParams;
+  controller: any; // Base DDJFlx4Controller
+  controllerState: any;
+  visualParams: any;
   identificationTracks?: Track[];
   onTrackIdentification?: (result: any) => void;
 }
@@ -179,7 +183,7 @@ function GenreAdaptiveTorus({ aiData, bpmData }: { aiData: any, bpmData: any }) 
 }
 
 // Memory-Learning Particle System
-function MemoryLearningParticles({ aiData, controllerState, bpmData }: { aiData: any, controllerState: DDJControllerState, bpmData: any }) {
+function MemoryLearningParticles({ aiData, controllerState, bpmData }: { aiData: any, controllerState: any, bpmData: any }) {
   const particlesRef = useRef<THREE.Points>(null);
   const particleCount = 500;
   const memoryIntensityRef = useRef(0);
@@ -269,7 +273,7 @@ function MemoryLearningParticles({ aiData, controllerState, bpmData }: { aiData:
 }
 
 // Smart Smoothing EQ Visualizer  
-function SmartSmoothingEQBars({ aiData, controllerState, bpmData }: { aiData: any, controllerState: DDJControllerState, bpmData: any }) {
+function SmartSmoothingEQBars({ aiData, controllerState, bpmData }: { aiData: any, controllerState: any, bpmData: any }) {
   const groupRef = useRef<THREE.Group>(null);
   const smoothedEQRef = useRef({ low: 64, mid: 64, high: 64 });
 
@@ -385,18 +389,37 @@ function AIStatusDisplay({ aiData, bpmData }: { aiData: any, bpmData: any }) {
 }
 
 // Main AI-Enhanced Visualizer Component
-export default function AIEnhancedVisualizer({ 
-  controller, 
-  controllerState, 
+export default function AIEnhancedVisualizer({
+  controller,
+  controllerState,
   visualParams,
   identificationTracks,
   onTrackIdentification
 }: AIEnhancedVisualizerProps) {
+  // Create AI controller wrapper
+  const [aiController] = useState(() => {
+    // If controller is already AI-enhanced, use it
+    if (controller instanceof DDJFlx4AIController) {
+      return controller;
+    }
+    // Otherwise create new AI controller
+    return new DDJFlx4AIController();
+  });
+
+  const [isConnected, setIsConnected] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [spectralFeatures, setSpectralFeatures] = useState<any>(null);
+  const [identificationResult, setIdentificationResult] = useState<IdentificationResult | null>(null);
+  const [isAudioActive, setIsAudioActive] = useState(false);
+  const [useVisualDNA, setUseVisualDNA] = useState(true); // Default to Visual DNA system
+  const audioLevelRef = useRef(audioLevel);
+  const spectralFeaturesRef = useRef(spectralFeatures);
+  
   // Get traditional BPM data
   const bpmData = useMIDIBPM();
   
   // Get AI analysis
-  const aiData = useAIAudioAnalyzer(controller);
+  const aiData = useAIAudioAnalyzer(aiController);
 
   // Load tracks into AI system when available - using ref to prevent reload loop
   const tracksLoadedRef = React.useRef(false);
@@ -407,7 +430,7 @@ export default function AIEnhancedVisualizer({
       aiData.loadTrackDatabase(identificationTracks);
       tracksLoadedRef.current = true;
     }
-  }, [identificationTracks]);
+  }, [identificationTracks, aiData]);
 
   // Send track identification results back to App
   React.useEffect(() => {
@@ -415,6 +438,105 @@ export default function AIEnhancedVisualizer({
       onTrackIdentification(aiData.trackIdentification);
     }
   }, [aiData.trackIdentification, onTrackIdentification]);
+
+  useEffect(() => {
+    audioLevelRef.current = audioLevel;
+  }, [audioLevel]);
+
+  useEffect(() => {
+    spectralFeaturesRef.current = spectralFeatures;
+  }, [spectralFeatures]);
+
+  useEffect(() => {
+    const connectController = async () => {
+      // Just set as connected since this is a wrapper
+      setIsConnected(true);
+    };
+
+    connectController();
+
+    return () => {
+      aiController.dispose();
+    };
+  }, [aiController]);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        const parser = new RekordboxParser();
+        const fileContent = await file.text();
+        const data = await RekordboxParser.parseXML(fileContent);
+        console.log('Parsed tracks:', data.length);
+        
+        // Load tracks into AI system
+        const analyzer = aiController.getAIState().aiAnalyzer;
+        if (analyzer && 'loadTrackDatabase' in analyzer) {
+          (analyzer as any).loadTrackDatabase(data);
+        }
+      } catch (error) {
+        console.error('Failed to parse Rekordbox XML:', error);
+      }
+    }
+  };
+
+  // Handle audio analysis data
+  const handleAudioData = async (data: any) => {
+    console.log('📊 Audio data received in AIEnhancedVisualizer:', {
+      audioLevel: data.audioLevel,
+      timestamp: data.timestamp,
+      hasSpectralFeatures: !!data.spectralFeatures
+    });
+    
+    setAudioLevel(data.audioLevel || 0);
+    setSpectralFeatures(data.spectralFeatures || null);
+    
+    // Always call analyze regardless of audio active state
+    if (aiController) {
+      const aiState = aiController.getAIState();
+      const audioMetrics = {
+        spectralCentroid: data.spectralFeatures?.brightness || 0,
+        spectralBandwidth: data.spectralFeatures?.bandwidth || 0,
+        spectralRolloff: data.spectralFeatures?.rolloff || 0,
+        zeroCrossingRate: data.spectralFeatures?.zcr || 0,
+        mfcc: data.spectralFeatures?.mfcc || Array(13).fill(0),
+        chroma: data.spectralFeatures?.chroma || Array(12).fill(0),
+        tonnetz: Array(6).fill(0)
+      };
+      
+      try {
+        console.log('🧠 Calling analyzeAudioData with audio input data');
+        await (aiState.aiAnalyzer as any).analyzeAudioData(
+          aiController.getState(),
+          audioMetrics,
+          data.timestamp || performance.now(),
+          data // Pass the raw audio data as the fourth parameter
+        );
+        
+        // Track identification
+        const analyzer = aiState.aiAnalyzer as any;
+        if (analyzer.trackIdentifier) {
+          const identResult = await analyzer.trackIdentifier.identifyTrack(
+            audioMetrics,
+            data.audioLevel,
+            aiController.getState()
+          );
+          
+          setIdentificationResult(identResult);
+        }
+      } catch (error) {
+        console.error('❌ Error in audio analysis:', error);
+      }
+    }
+  };
+
+  const handleAudioStateChange = (isActive: boolean) => {
+    console.log('🔊 Audio state changed:', isActive);
+    setIsAudioActive(isActive);
+  };
+
+  const getAIState = () => aiController.getAIState();
+  const getAnalyzer = () => aiController.getAIState().aiAnalyzer;
 
   return (
     <div style={{ width: '100%', height: '100vh', background: '#0a0a0a' }}>
@@ -467,7 +589,7 @@ export default function AIEnhancedVisualizer({
         <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>
           🧠 AI Audio Analysis & Controls
         </div>
-        
+
         {/* Audio Input Control Section */}
         <div style={{ 
           marginBottom: '15px', 
@@ -515,7 +637,7 @@ export default function AIEnhancedVisualizer({
                 {Math.round(aiData.audioInput.audioLevel * 100)}%
               </span>
             </div>
-            
+
             {/* Audio Level Bar */}
             <div style={{
               width: '100%',
@@ -773,8 +895,9 @@ export default function AIEnhancedVisualizer({
                   <div style={{ marginLeft: '10px', fontSize: '9px' }}>
                     <div>Overall: {aiData.trackIdentification.currentTrack.track.energyAnalysis.overall}/10</div>
                     <div>Intro: {aiData.trackIdentification.currentTrack.track.energyAnalysis.intro}/10</div>
-                    <div>Verse: {aiData.trackIdentification.currentTrack.track.energyAnalysis.verse}/10</div>
-                    <div>Chorus: {aiData.trackIdentification.currentTrack.track.energyAnalysis.chorus}/10</div>
+                    <div>Breakdown: {aiData.trackIdentification.currentTrack.track.energyAnalysis.breakdown}/10</div>
+                    <div>Buildup: {aiData.trackIdentification.currentTrack.track.energyAnalysis.buildup}/10</div>
+                    <div>Drop: {aiData.trackIdentification.currentTrack.track.energyAnalysis.drop}/10</div>
                     <div>Outro: {aiData.trackIdentification.currentTrack.track.energyAnalysis.outro}/10</div>
                   </div>
                 </div>
@@ -908,6 +1031,45 @@ export default function AIEnhancedVisualizer({
             </div>
           </div>
         </CollapsibleSection>
+
+        <div style={{ color: '#a4b0be', fontSize: '10px', marginTop: '12px' }}>
+          ✅ AI is analyzing in real-time. Check console for detailed logs.
+        </div>
+
+        {/* File Upload */}
+        <div style={{ marginTop: '12px', padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
+          <label style={{ fontSize: '11px', color: '#00ffff' }}>Load Rekordbox Collection:</label>
+          <input
+            type="file"
+            accept=".xml"
+            onChange={handleFileUpload}
+            style={{ fontSize: '10px', marginTop: '4px' }}
+          />
+        </div>
+
+        <div className="visualizer-toggle" style={{ marginTop: '12px' }}>
+          <label style={{ fontSize: '11px' }}>
+            <input
+              type="checkbox"
+              checked={useVisualDNA}
+              onChange={(e) => setUseVisualDNA(e.target.checked)}
+            />
+            Use Visual DNA System
+          </label>
+        </div>
+
+        {identificationResult && (
+          <TrackIdentificationPanel 
+            onTracksLoaded={() => {}}
+            identificationResult={identificationResult}
+            isAIReady={aiData.isAIReady}
+          />
+        )}
+
+        <div className="ai-info" style={{ marginTop: '12px' }}>
+          <h3 style={{ fontSize: '12px' }}>AI Analysis</h3>
+          <pre style={{ fontSize: '9px' }}>{JSON.stringify(aiController.getAIAnalysis(), null, 2)}</pre>
+        </div>
       </div>
     </div>
   );
