@@ -3,7 +3,6 @@ import './App.css';
 import VisualizerScene from './components/visualizer-scene';
 import AIEnhancedVisualizer from './components/ai-enhanced-visualizer';
 import TrackIdentificationPanel from './components/track-identification-panel';
-import { VisualDNAIntegration } from './components/visual-dna-integration';
 import useMIDIBPM from './hooks/useMIDIBPM';
 
 import { DDJFlx4Controller } from './controllers/ddj-flx4-controller';
@@ -33,11 +32,15 @@ function App() {
 
 
   
-  // Visualizer mode - now with three options
-  const [visualizerMode, setVisualizerMode] = useState<'basic' | 'ai' | 'visual-dna'>('visual-dna');
+  // Visualizer mode - basic or AI
+  const [visualizerMode, setVisualizerMode] = useState<'basic' | 'ai'>('basic');
+  
+  // Visual DNA overlay toggle
+  const [visualDNAEnabled, setVisualDNAEnabled] = useState(true);
   
   // UI state
   const [isControllerSectionCollapsed, setIsControllerSectionCollapsed] = useState(false);
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState(true);
   
   // Track identification state
   const [identificationTracks, setIdentificationTracks] = useState<Track[]>([]);
@@ -318,8 +321,60 @@ function App() {
 
   return (
     <div className="App">
+      {/* Left Panel Toggle Button */}
+      <button
+        onClick={() => setIsLeftPanelOpen(!isLeftPanelOpen)}
+        style={{
+          position: 'fixed',
+          top: '20px',
+          left: isLeftPanelOpen ? '320px' : '20px',
+          zIndex: 1001,
+          background: 'rgba(0, 0, 0, 0.9)',
+          border: '2px solid #333',
+          color: 'white',
+          width: '40px',
+          height: '40px',
+          borderRadius: '50%',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '18px',
+          transition: 'all 0.3s ease',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.5)'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(50, 50, 50, 0.9)';
+          e.currentTarget.style.transform = 'scale(1.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'rgba(0, 0, 0, 0.9)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+      >
+        {isLeftPanelOpen ? '◀' : '▶'}
+      </button>
+
       {/* Control Panel */}
-      <div className="control-panel">
+      <div 
+        className="control-panel" 
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '300px',
+          height: '100vh',
+          background: 'linear-gradient(135deg, #1e3c72, #2a5298)',
+          color: 'white',
+          padding: '20px',
+          boxSizing: 'border-box',
+          overflowY: 'auto',
+          zIndex: 1000,
+          transform: isLeftPanelOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.3s ease',
+          boxShadow: isLeftPanelOpen ? '2px 0 10px rgba(0,0,0,0.3)' : 'none'
+        }}
+      >
         <div className="control-section">
           <h2>🎛️ DDJ-FLX4 Audio Visualizer</h2>
           
@@ -331,11 +386,11 @@ function App() {
             <span>
               {isControllerConnected ? 'DDJ-FLX4 Connected' : 'DDJ-FLX4 Disconnected'}
             </span>
-                         {!isControllerConnected && (
-               <button onClick={retryConnection} className="retry-btn">
-                 Retry Connection {connectionAttempts > 0 && `(${connectionAttempts})`}
-               </button>
-             )}
+            {!isControllerConnected && (
+              <button onClick={retryConnection} className="retry-btn">
+                Retry Connection {connectionAttempts > 0 && `(${connectionAttempts})`}
+              </button>
+            )}
           </div>
 
           {/* Visualizer Mode Toggle */}
@@ -344,7 +399,7 @@ function App() {
               <label style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
                 <select
                   value={visualizerMode}
-                  onChange={(e) => setVisualizerMode(e.target.value as 'basic' | 'ai' | 'visual-dna')}
+                  onChange={(e) => setVisualizerMode(e.target.value as 'basic' | 'ai')}
                   style={{
                     padding: '5px 10px',
                     fontSize: '14px',
@@ -358,24 +413,25 @@ function App() {
                 >
                   <option value="basic">🎵 Basic Visualizer</option>
                   <option value="ai">🤖 AI-Enhanced</option>
-                  <option value="visual-dna">🧬 Visual DNA</option>
                 </select>
+              </label>
+              
+              {/* Visual DNA Toggle */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '20px' }}>
+                <input
+                  type="checkbox"
+                  checked={visualDNAEnabled}
+                  onChange={(e) => setVisualDNAEnabled(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                  🧬 Visual DNA {visualizerMode === 'basic' ? 'Overlay' : ''}
+                </span>
               </label>
             </div>
             
             <div className="mode-description">
-              {visualizerMode === 'visual-dna' ? (
-                <>
-                  🧬 <strong>Visual DNA Mode:</strong> AI-powered visual profiles
-                  <div style={{ fontSize: '12px', color: '#a4b0be', marginTop: '8px' }}>
-                    • 10 unique visual DNA profiles<br/>
-                    • Genre-based automatic switching<br/>
-                    • Dynamic color palette generation<br/>
-                    • Smooth transitions between profiles<br/>
-                    • MIDI & audio reactive behaviors
-                  </div>
-                </>
-              ) : visualizerMode === 'ai' ? (
+              {visualizerMode === 'ai' ? (
                 <>
                   🧠 <strong>AI Mode:</strong> Predictive beats + learning + smart smoothing
                   <div style={{ fontSize: '12px', color: '#a4b0be', marginTop: '8px' }}>
@@ -396,6 +452,36 @@ function App() {
                     • Manual BPM tapping: Notes 150, 99, 127
                   </div>
                 </>
+              )}
+              
+              {/* Visual DNA Description when enabled */}
+              {visualDNAEnabled && (
+                <div style={{ 
+                  fontSize: '12px', 
+                  color: '#e74c3c', 
+                  marginTop: '8px',
+                  background: 'rgba(231, 76, 60, 0.1)',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(231, 76, 60, 0.3)'
+                }}>
+                  🧬 <strong>Visual DNA {visualizerMode === 'basic' ? 'Overlay' : 'System'} Active:</strong>
+                  <div style={{ marginTop: '4px' }}>
+                    {visualizerMode === 'basic' ? (
+                      <>
+                        • Overlay mode: Semi-transparent layer over basic visualizer<br/>
+                        • MIDI-only: Reacts to controller movements<br/>
+                        • Simulated genre detection based on EQ settings
+                      </>
+                    ) : (
+                      <>
+                        • Full replacement: Visual DNA is the main visualizer<br/>
+                        • AI-powered: Real audio analysis & genre detection<br/>
+                        • 10 unique profiles with smooth transitions
+                      </>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -490,29 +576,32 @@ function App() {
       </div>
 
       {/* Main Visualizer */}
-      {visualizerMode === 'visual-dna' ? (
-        <VisualDNAIntegration
-          controller={ddjController}
-          controllerState={appState.controller}
-          visualParams={appState.visualParams}
-          identificationTracks={identificationTracks}
-          onTrackIdentification={handleTrackIdentification}
-        />
-      ) : visualizerMode === 'ai' ? (
-        <AIEnhancedVisualizer
-          controller={ddjController}
-          controllerState={appState.controller}
-          visualParams={appState.visualParams}
-          identificationTracks={identificationTracks}
-          onTrackIdentification={handleTrackIdentification}
-        />
-      ) : (
-        <VisualizerScene 
-          controllerState={appState.controller}
-          visualParams={appState.visualParams}
-          bpmData={bpmData}
-        />
-      )}
+      <div style={{ 
+        marginLeft: isLeftPanelOpen ? '300px' : '0px',
+        transition: 'margin-left 0.3s ease',
+        width: isLeftPanelOpen ? 'calc(100% - 300px)' : '100%',
+        height: '100vh'
+      }}>
+        {visualizerMode === 'ai' ? (
+          <AIEnhancedVisualizer
+            controller={ddjController}
+            controllerState={appState.controller}
+            visualParams={appState.visualParams}
+            identificationTracks={identificationTracks}
+            onTrackIdentification={handleTrackIdentification}
+            visualDNAEnabled={visualDNAEnabled}
+          />
+        ) : (
+          <VisualizerScene 
+            controllerState={appState.controller}
+            visualParams={appState.visualParams}
+            bpmData={bpmData}
+            visualDNAEnabled={visualDNAEnabled}
+          />
+        )}
+      </div>
+
+
     </div>
   );
 }

@@ -92,10 +92,15 @@ export class VisualDNASystem {
   private patternHistory: Array<{ timestamp: number; pattern: any }> = [];
   private colorHistory: ColorPalette[] = [];
   
+  // Manual control
+  private manualMode: boolean = false;
+  private manualModeTimeout: number | null = null;
+  
   // Constants
   private readonly INTERPOLATION_SPEED = 0.02;
   private readonly PATTERN_HISTORY_SIZE = 50;
   private readonly COLOR_HISTORY_SIZE = 10;
+  private readonly MANUAL_MODE_DURATION = 30000; // 30 seconds
   
   constructor() {
     console.log('🧬 Initializing Visual DNA System...');
@@ -728,16 +733,67 @@ export class VisualDNASystem {
    * Main update loop - processes audio and MIDI data to generate visual state
    */
   public update(timestamp: number): ActiveVisualState {
+    // Always process MIDI modulations first
+    if (this.controllerState) {
+      this.processMIDIModulations();
+    }
+
+    // Check if manual mode has expired
+    if (this.manualMode && this.manualModeTimeout && timestamp > this.manualModeTimeout) {
+      this.manualMode = false;
+      this.manualModeTimeout = null;
+      console.log('📻 Returning to automatic profile selection');
+    }
+
     if (!this.analyzer || !this.controllerState) {
       return this.activeState;
     }
 
-    // Get current analysis data
-    const aiState = this.analyzer.getAIState();
-    const patternRecognition = aiState.patternRecognition as PatternRecognition;
-    const genreClassification = patternRecognition.genreClassification;
-    const energyPrediction = patternRecognition.energyPrediction;
-    const transitionDetection = patternRecognition.transitionDetection;
+    try {
+      // Get current analysis data
+      const aiState = this.analyzer.getAIState();
+      const patternRecognition = aiState.patternRecognition as PatternRecognition;
+      const genreClassification = patternRecognition?.genreClassification;
+      const energyPrediction = patternRecognition?.energyPrediction;
+      const transitionDetection = patternRecognition?.transitionDetection;
+      
+      // Check if we have valid data and audio is actually playing
+      const hasValidAudio = aiState.audioInput?.audioLevel > 0.01; // Minimum threshold
+      
+      if (!genreClassification || !energyPrediction || !hasValidAudio) {
+        // Use MIDI-only mode when no audio
+        const defaultGenre = { detectedGenre: 'electronic', confidence: 0.5 };
+        const defaultEnergy = { 
+          currentEnergy: this.getMIDIEnergy(), // Calculate from MIDI instead
+          energyTrend: 'stable' as const,
+          predictedEnergy: [],
+          peakPrediction: 0.5
+        };
+        
+        // Only update patterns if we're actually getting new data
+        if (this.activeState.activePatterns.length === 0) {
+          this.updateActivePatterns({ detectedPatterns: [], energyPrediction: defaultEnergy } as any);
+        }
+        
+        // Don't initiate transitions in MIDI-only mode unless significant change
+        const currentEnergy = this.getMIDIEnergy();
+        const lastEnergy = this.activeState.midiModulations.get('lastEnergy') || 0.5;
+        const energyDelta = Math.abs(currentEnergy - lastEnergy);
+        
+        // Only transition if energy change is significant
+        if (energyDelta > 0.3) {
+          const selectedProfile = this.selectProfileByEnergy(currentEnergy);
+          if (selectedProfile.id !== this.activeState.currentProfile.id && !this.activeState.targetProfile) {
+            this.initiateProfileTransition(selectedProfile);
+          }
+          this.activeState.midiModulations.set('lastEnergy', currentEnergy);
+        }
+        
+        // Continue any ongoing transitions
+        this.updateInterpolation();
+        
+        return this.activeState;
+      }
 
     // Update pattern history
     this.updatePatternHistory(patternRecognition, timestamp);
@@ -745,9 +801,17 @@ export class VisualDNASystem {
     // Select appropriate profile based on analysis
     const selectedProfile = this.selectProfile(genreClassification, energyPrediction);
 
-    // Handle profile transitions
-    if (selectedProfile.id !== this.activeState.currentProfile.id) {
+    // Handle profile transitions - add cooldown to prevent rapid switching
+    const lastTransitionTime = this.activeState.midiModulations.get('lastTransition') || 0;
+    const transitionCooldown = 5000; // 5 seconds between transitions
+    
+    // Only auto-transition if not in manual mode
+    if (!this.manualMode &&
+        selectedProfile.id !== this.activeState.currentProfile.id && 
+        !this.activeState.targetProfile &&
+        (timestamp - lastTransitionTime) > transitionCooldown) {
       this.initiateProfileTransition(selectedProfile);
+      this.activeState.midiModulations.set('lastTransition', timestamp);
     }
 
     // Update interpolation
@@ -759,13 +823,64 @@ export class VisualDNASystem {
     // Scale visual complexity
     this.updateVisualComplexity(energyPrediction, transitionDetection);
 
-    // Process MIDI modulations
-    this.processMIDIModulations();
-
+    // Process MIDI modulations (already done at start)
+    
     // Update active patterns
     this.updateActivePatterns(patternRecognition);
 
     return this.activeState;
+    } catch (error) {
+      console.error('Error in Visual DNA update:', error);
+      // Return current state on error
+      return this.activeState;
+    }
+  }
+
+  /**
+   * Calculate energy from MIDI controller state
+   */
+  private getMIDIEnergy(): number {
+    if (!this.controllerState) return 0.5;
+    
+    const volumeA = (this.controllerState.channelA?.volume || 127) / 127;
+    const volumeB = (this.controllerState.channelB?.volume || 127) / 127;
+    const crossfader = (this.controllerState.crossfader || 64) / 127;
+    
+    // Mix channels based on crossfader position
+    const mixedVolume = volumeA * (1 - crossfader) + volumeB * crossfader;
+    
+    // Add EQ influence
+    const eqInfluence = 0.3;
+    const avgEqA = ((this.controllerState.channelA?.eq?.low || 64) + 
+                    (this.controllerState.channelA?.eq?.mid || 64) + 
+                    (this.controllerState.channelA?.eq?.high || 64)) / (3 * 127);
+    const avgEqB = ((this.controllerState.channelB?.eq?.low || 64) + 
+                    (this.controllerState.channelB?.eq?.mid || 64) + 
+                    (this.controllerState.channelB?.eq?.high || 64)) / (3 * 127);
+    
+    const mixedEq = avgEqA * (1 - crossfader) + avgEqB * crossfader;
+    
+    return mixedVolume * (1 - eqInfluence) + mixedEq * eqInfluence;
+  }
+
+  /**
+   * Select profile by energy level only (for MIDI-only mode)
+   */
+  private selectProfileByEnergy(energyLevel: number): VisualDNAProfile {
+    // Get default profile first to ensure we always have a fallback
+    const defaultProfile = this.profiles.get('neon-pulse') || this.profiles.values().next().value!;
+    
+    if (energyLevel > 0.8) {
+      return this.profiles.get('neon-pulse') || defaultProfile;
+    } else if (energyLevel > 0.6) {
+      return this.profiles.get('crystal-matrix') || defaultProfile;
+    } else if (energyLevel > 0.4) {
+      return this.profiles.get('digital-garden') || defaultProfile;
+    } else if (energyLevel > 0.2) {
+      return this.profiles.get('ocean-deep') || defaultProfile;
+    } else {
+      return this.profiles.get('liquid-dreams') || defaultProfile;
+    }
   }
 
   /**
@@ -920,13 +1035,31 @@ export class VisualDNASystem {
     if (!this.controllerState) return;
 
     // Map controller values to visual parameters
-    const volumeA = this.controllerState.channelA.volume / 127;
-    const volumeB = this.controllerState.channelB.volume / 127;
-    const crossfader = this.controllerState.crossfader / 127;
+    const volumeA = (this.controllerState.channelA?.volume || 127) / 127;
+    const volumeB = (this.controllerState.channelB?.volume || 127) / 127;
+    const crossfader = (this.controllerState.crossfader || 64) / 127;
 
-    // Effects modulation
-    const filterMod = this.controllerState.effectControls.filter.low / 127;
-    const reverbMod = this.controllerState.effectControls.reverb.level / 127;
+    // Effects modulation - check if properties exist
+    let filterMod = 0.5;
+    let reverbMod = 0.5;
+    
+    if ('effectControls' in this.controllerState && this.controllerState.effectControls) {
+      filterMod = (this.controllerState.effectControls.filter?.low || 64) / 127;
+      reverbMod = (this.controllerState.effectControls.reverb?.level || 64) / 127;
+    } else {
+      // Use EQ values as fallback for effect modulation
+      const eqALow = this.controllerState.channelA?.eq?.low || 64;
+      const eqAMid = this.controllerState.channelA?.eq?.mid || 64;
+      const eqAHigh = this.controllerState.channelA?.eq?.high || 64;
+      const avgEqA = (eqALow + eqAMid + eqAHigh) / (3 * 127);
+      
+      const eqBLow = this.controllerState.channelB?.eq?.low || 64;
+      const eqBMid = this.controllerState.channelB?.eq?.mid || 64;
+      const eqBHigh = this.controllerState.channelB?.eq?.high || 64;
+      const avgEqB = (eqBLow + eqBMid + eqBHigh) / (3 * 127);
+      filterMod = (avgEqA + avgEqB) / 2;
+      reverbMod = Math.abs(crossfader - 0.5) * 2; // Use crossfader position for reverb effect
+    }
 
     // Update modulation values
     this.activeState.midiModulations.set('complexity', 0.5 + (volumeA + volumeB) * 0.25);
@@ -1100,5 +1233,56 @@ export class VisualDNASystem {
    */
   public getPatternHistory(): Array<{ timestamp: number; pattern: any }> {
     return this.patternHistory;
+  }
+
+  /**
+   * Manually select a profile by ID
+   */
+  public selectProfileManually(profileId: string): boolean {
+    const profile = this.profiles.get(profileId);
+    if (!profile) {
+      console.error(`Profile ${profileId} not found`);
+      return false;
+    }
+
+    // Enable manual mode
+    this.manualMode = true;
+    this.manualModeTimeout = performance.now() + this.MANUAL_MODE_DURATION;
+    
+    // Initiate transition to selected profile
+    if (profile.id !== this.activeState.currentProfile.id) {
+      this.initiateProfileTransition(profile);
+      console.log(`🎨 Manually switching to ${profile.name}`);
+    }
+    
+    return true;
+  }
+
+  /**
+   * Get all available profiles for UI
+   */
+  public getProfileList(): Array<{ id: string; name: string; description: string; moodTags: string[] }> {
+    return Array.from(this.profiles.values()).map(profile => ({
+      id: profile.id,
+      name: profile.name,
+      description: profile.description,
+      moodTags: profile.moodTags
+    }));
+  }
+
+  /**
+   * Check if in manual mode
+   */
+  public isManualMode(): boolean {
+    return this.manualMode;
+  }
+
+  /**
+   * Exit manual mode and return to automatic
+   */
+  public exitManualMode(): void {
+    this.manualMode = false;
+    this.manualModeTimeout = null;
+    console.log('📻 Exited manual mode');
   }
 } 

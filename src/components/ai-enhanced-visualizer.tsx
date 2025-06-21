@@ -19,6 +19,7 @@ interface AIEnhancedVisualizerProps {
   visualParams: any;
   identificationTracks?: Track[];
   onTrackIdentification?: (result: any) => void;
+  visualDNAEnabled?: boolean;
 }
 
 // Collapsible Section Component
@@ -394,7 +395,8 @@ export default function AIEnhancedVisualizer({
   controllerState,
   visualParams,
   identificationTracks,
-  onTrackIdentification
+  onTrackIdentification,
+  visualDNAEnabled = false
 }: AIEnhancedVisualizerProps) {
   // Create AI controller wrapper
   const [aiController] = useState(() => {
@@ -412,6 +414,7 @@ export default function AIEnhancedVisualizer({
   const [identificationResult, setIdentificationResult] = useState<IdentificationResult | null>(null);
   const [isAudioActive, setIsAudioActive] = useState(false);
   const [useVisualDNA, setUseVisualDNA] = useState(true); // Default to Visual DNA system
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(true); // New state for right panel
   const audioLevelRef = useRef(audioLevel);
   const spectralFeaturesRef = useRef(spectralFeatures);
   
@@ -539,52 +542,109 @@ export default function AIEnhancedVisualizer({
   const getAnalyzer = () => aiController.getAIState().aiAnalyzer;
 
   return (
-    <div style={{ width: '100%', height: '100vh', background: '#0a0a0a' }}>
-      <Canvas
-        camera={{ position: [0, 0, 12], fov: 75 }}
-        style={{ background: 'linear-gradient(to bottom, #1a1a2e, #2a5298)' }}
+    <div style={{ width: '100%', height: '100vh', background: '#0a0a0a', position: 'relative' }}>
+      {/* Right Panel Toggle Button */}
+      <button
+        onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
+        style={{
+          position: 'fixed',
+          top: '20px',
+          right: isRightPanelOpen ? '420px' : '20px',
+          zIndex: 1001,
+          background: 'rgba(0, 0, 0, 0.9)',
+          border: '2px solid #333',
+          color: 'white',
+          width: '40px',
+          height: '40px',
+          borderRadius: '50%',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '18px',
+          transition: 'all 0.3s ease',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.5)'
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(50, 50, 50, 0.9)';
+          e.currentTarget.style.transform = 'scale(1.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'rgba(0, 0, 0, 0.9)';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
       >
-        {/* Lighting */}
-        <ambientLight intensity={0.3} />
-        <pointLight position={[10, 10, 10]} intensity={0.8} />
-        <pointLight position={[-10, -5, -10]} intensity={0.4} color="#ff6b6b" />
-        
-        {/* AI-Powered Visual Components */}
-        <AIPredictiveBeatSphere aiData={aiData} bpmData={bpmData} />
-        <GenreAdaptiveTorus aiData={aiData} bpmData={bpmData} />
-        <MemoryLearningParticles aiData={aiData} controllerState={controllerState} bpmData={bpmData} />
-        <SmartSmoothingEQBars aiData={aiData} controllerState={controllerState} bpmData={bpmData} />
-        <AIStatusDisplay aiData={aiData} bpmData={bpmData} />
-        
-        {/* Camera controls */}
-        <OrbitControls 
-          enablePan={true}
-          enableZoom={true}
-          enableRotate={true}
-          minDistance={5}
-          maxDistance={25}
+        {isRightPanelOpen ? '▶' : '◀'}
+      </button>
+
+      {/* Show Visual DNA as main visualizer when enabled, otherwise show traditional AI visualizer */}
+      {visualDNAEnabled ? (
+        <VisualDNAVisualizer
+          analyzer={aiController.getAIState().aiAnalyzer as any}
+          controllerState={controllerState as any}
+          audioLevel={(() => {
+            const level = aiData.audioInput.audioLevel || audioLevel || 0;
+            console.log('Visual DNA Audio Level:', level, 'Audio Input:', aiData.audioInput.audioLevel, 'Audio Level:', audioLevel);
+            return level;
+          })()}
+          spectralFeatures={spectralFeatures || {
+            brightness: aiData.smartSmoothedValues?.energy ? (aiData.smartSmoothedValues.energy * 4000) : 2000,
+            bandwidth: aiData.audioInput.audioLevel ? (aiData.audioInput.audioLevel * 2000) : 1000,
+            rolloff: aiData.audioInput.audioLevel ? (aiData.audioInput.audioLevel * 8000) : 4000
+          }}
         />
-      </Canvas>
+      ) : (
+        <Canvas
+          camera={{ position: [0, 0, 12], fov: 75 }}
+          style={{ background: 'linear-gradient(to bottom, #1a1a2e, #2a5298)' }}
+        >
+          {/* Lighting */}
+          <ambientLight intensity={0.3} />
+          <pointLight position={[10, 10, 10]} intensity={0.8} />
+          <pointLight position={[-10, -5, -10]} intensity={0.4} color="#ff6b6b" />
+          
+          {/* AI-Powered Visual Components */}
+          <AIPredictiveBeatSphere aiData={aiData} bpmData={bpmData} />
+          <GenreAdaptiveTorus aiData={aiData} bpmData={bpmData} />
+          <MemoryLearningParticles aiData={aiData} controllerState={controllerState} bpmData={bpmData} />
+          <SmartSmoothingEQBars aiData={aiData} controllerState={controllerState} bpmData={bpmData} />
+          <AIStatusDisplay aiData={aiData} bpmData={bpmData} />
+          
+          {/* Camera controls */}
+          <OrbitControls 
+            enablePan={true}
+            enableZoom={true}
+            enableRotate={true}
+            minDistance={5}
+            maxDistance={25}
+          />
+        </Canvas>
+      )}
       
       {/* Combined AI Analysis & Audio Input Control Panel - Right Side */}
       <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
-        width: '400px', // Fixed width
-        height: '85vh', // Fixed height
+        position: 'fixed',
+        top: '0',
+        right: '0',
+        width: '400px',
+        height: '100vh',
         color: 'white',
         fontFamily: 'monospace',
         fontSize: '11px',
         background: 'rgba(0,0,0,0.9)',
-        padding: '15px',
-        borderRadius: '12px',
+        padding: '20px',
+        borderRadius: '0',
         lineHeight: '1.4',
         overflowY: 'auto',
         border: '2px solid #333',
+        borderRight: 'none',
         scrollbarWidth: 'thin',
         scrollbarColor: '#666 #222',
-        boxSizing: 'border-box' // Include padding in dimensions
+        boxSizing: 'border-box',
+        zIndex: 1000,
+        transform: isRightPanelOpen ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.3s ease',
+        boxShadow: isRightPanelOpen ? '-2px 0 10px rgba(0,0,0,0.3)' : 'none'
       }}>
         <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>
           🧠 AI Audio Analysis & Controls
@@ -630,7 +690,7 @@ export default function AIEnhancedVisualizer({
                       aiData.audioInput.audioLevel > 0.2 ? '#ffa502' : '#ff6b6b',
                 fontWeight: 'bold',
                 fontSize: '14px',
-                minWidth: '32px', // Fixed width for percentages
+                minWidth: '32px',
                 display: 'inline-block',
                 textAlign: 'right'
               }}>

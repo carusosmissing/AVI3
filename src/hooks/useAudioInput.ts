@@ -65,10 +65,19 @@ export const useAudioInput = (): AudioInputHook => {
   // Current audio level ref for immediate access (no React state delay)
   const currentAudioLevelRef = useRef<number>(0);
   
+  // Enhanced smoothing state
+  const smoothingStateRef = useRef({
+    audioLevel: 0,
+    audioLevelVelocity: 0,
+    audioLevelHistory: [] as number[],
+    lastUpdateTime: 0,
+    targetLevel: 0
+  });
+  
   // Configuration
   const FFT_SIZE = 2048;
-  const SMOOTHING_TIME_CONSTANT = 0.3; // Minimal smoothing for responsive analysis
-  const UPDATE_INTERVAL = 100; // ms
+  const SMOOTHING_TIME_CONSTANT = 0.8; // Increased smoothing for stable analysis
+  const UPDATE_INTERVAL = 50; // ms - faster updates for smoother visuals
 
   /**
    * Get available audio input devices
@@ -372,7 +381,43 @@ export const useAudioInput = (): AudioInputHook => {
       const combinedLevel = Math.max(rmsLevel, peakLevel, freqLevel, weightedLevel);
       
       // Apply gain and sensitivity to the combined level
-      const finalLevel = Math.min(1.0, combinedLevel * inputGain * sensitivity);
+      const rawLevel = Math.min(1.0, combinedLevel * inputGain * sensitivity);
+      
+      // Enhanced smoothing with momentum and history
+      const currentTime = performance.now();
+      const deltaTime = Math.min(50, currentTime - smoothingStateRef.current.lastUpdateTime) / 1000; // Cap at 50ms
+      smoothingStateRef.current.lastUpdateTime = currentTime;
+      
+      // Add to history (keep last 10 values for trend analysis)
+      smoothingStateRef.current.audioLevelHistory.push(rawLevel);
+      if (smoothingStateRef.current.audioLevelHistory.length > 10) {
+        smoothingStateRef.current.audioLevelHistory.shift();
+      }
+      
+      // Calculate trend for predictive smoothing
+      const history = smoothingStateRef.current.audioLevelHistory;
+      const trend = history.length > 2 ? 
+        (history[history.length - 1] - history[history.length - 3]) / 2 : 0;
+      
+      // Adaptive smoothing based on change rate
+      const changeRate = Math.abs(rawLevel - smoothingStateRef.current.audioLevel);
+      const adaptiveSmoothing = Math.max(0.05, Math.min(0.3, 0.15 - changeRate * 0.5));
+      
+      // Physics-based smoothing with velocity
+      const targetDiff = rawLevel - smoothingStateRef.current.audioLevel;
+      smoothingStateRef.current.audioLevelVelocity += targetDiff * 8.0 * deltaTime;
+      smoothingStateRef.current.audioLevelVelocity *= 0.85; // Damping
+      
+      // Update with velocity and trend prediction
+      const velocityContribution = smoothingStateRef.current.audioLevelVelocity * deltaTime;
+      const trendContribution = trend * 0.1;
+      smoothingStateRef.current.audioLevel += velocityContribution + trendContribution;
+      
+      // Additional exponential smoothing for stability
+      smoothingStateRef.current.audioLevel = smoothingStateRef.current.audioLevel * (1 - adaptiveSmoothing) + rawLevel * adaptiveSmoothing;
+      
+      // Clamp final level
+      const finalLevel = Math.max(0, Math.min(1, smoothingStateRef.current.audioLevel));
       
       setAudioLevel(finalLevel);
       currentAudioLevelRef.current = finalLevel;
